@@ -15,6 +15,15 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7
 
+  packages/application:
+    dependencies:
+      '@wfill/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@wfill/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
+
   packages/contracts:
     dependencies:
       zod:
@@ -29,6 +38,18 @@ importers:
       '@wfill/rules-core':
         specifier: workspace:*
         version: link:../rules-core
+
+  packages/persistence:
+    dependencies:
+      '@wfill/application':
+        specifier: workspace:*
+        version: link:../application
+      '@wfill/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@wfill/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
 
   packages/rules-core: {}
 

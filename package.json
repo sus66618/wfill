@@ -1,0 +1,13 @@
+{
+  "name": "wfill",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/contracts/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

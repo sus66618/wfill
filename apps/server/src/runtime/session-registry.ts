@@ -66,7 +66,7 @@ export class SessionRegistry {
       auditEvents: [],
       updates,
     });
-    this.runners.set(gameId, this.createRunner(gameId, seed));
+    this.runners.set(gameId, this.createRunner(gameId, seed, 0));
     return this.view(gameId);
   }
 
@@ -129,16 +129,16 @@ export class SessionRegistry {
     const recovered = this.recovery.recover(gameId);
     const seed = recovered.state.seed as DemoSeed;
     if (seed !== "good-win" && seed !== "wolf-win") throw new Error("unsupported_demo_seed");
-    const runner = this.createRunner(gameId, seed);
+    const runner = this.createRunner(gameId, seed, recovered.state.processedCommandIds.length);
     this.runners.set(gameId, runner);
     return runner;
   }
 
-  private createRunner(gameId: GameId, seed: DemoSeed): GameSessionRunner {
+  private createRunner(gameId: GameId, seed: DemoSeed, consumedCommands: number): GameSessionRunner {
     return new GameSessionRunner({
       gameId,
       repository: this.repository,
-      controllers: createDemoControllers(seed),
+      controllers: createDemoControllers(seed, consumedCommands),
       publisher: this.publisher,
     });
   }

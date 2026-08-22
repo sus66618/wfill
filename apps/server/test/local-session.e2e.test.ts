@@ -112,10 +112,24 @@ describe("编译产物本地对局", () => {
     expect(JSON.stringify(publicTranscript)).not.toMatch(/poison|wolf_kill|role_assigned/);
     expect(JSON.stringify(godTranscript)).toContain("death_detail");
 
+    await fetch(`${baseUrl}/api/sessions`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ seed: "good-win", gameId: "mid-game-recovery" }),
+    });
+    await fetch(`${baseUrl}/api/sessions/mid-game-recovery/control`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "step" }),
+    });
+
     await stop(first);
     const second = await launch(port, dataDirectory);
     const recovered = await fetch(`${baseUrl}/api/sessions/black-box-good`);
     expect((await recovered.json()).view).toEqual(finalPublicView);
+    const resumed = await fetch(`${baseUrl}/api/sessions/mid-game-recovery/control`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "resume" }),
+    });
+    expect((await resumed.json()).view.outcome).toBe("good_win");
     await stop(second);
   }, 20_000);
 });

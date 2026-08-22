@@ -48,11 +48,12 @@ const scripts: Record<DemoSeed, readonly SeatDecision[]> = {
   ],
 };
 
-export const createDemoControllers = (seed: DemoSeed): StaticControllerRegistry => {
+export const createDemoControllers = (seed: DemoSeed, consumedCommands = 0): StaticControllerRegistry => {
   const controllers = new Map<SeatId, ScriptedPlayerController>();
+  const remaining = scripts[seed].slice(consumedCommands);
   for (let value = 1; value <= 6; value += 1) {
     const actorSeat = seat(value);
-    controllers.set(actorSeat, new Controller(scripts[seed]
+    controllers.set(actorSeat, new Controller(remaining
       .filter((decision) => decision.actorSeat === actorSeat)
       .map(({ actorSeat: _actorSeat, ...decision }) => decision)));
   }

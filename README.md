@@ -20,5 +20,6 @@ WFill 是一个面向多模型 API 的 AI 狼人杀项目。模型作为玩家�
 - [基础角色卡](docs/rules/roles/base-roles.md)
 - [规则选项](docs/rules/core/rule-options.md)
 - [版型约束](docs/rules/rulesets/player-count-policy.md)
+- [首版 6 人无警长版型](docs/rules/rulesets/6-player-no-sheriff.md)
 - [模型与密钥边界](docs/architecture/model-provider-boundary.md)
-
+- [整体设计文档](docs/superpowers/specs/2026-08-22-ai-werewolf-design.md)

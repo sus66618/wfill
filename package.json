@@ -9,6 +9,7 @@
     "typecheck": "pnpm build && tsc -p packages/contracts/tsconfig.json --noEmit && tsc -p packages/rules-core/tsconfig.json --noEmit && tsc -p packages/game-engine/tsconfig.json --noEmit && tsc -p packages/application/tsconfig.json --noEmit && tsc -p packages/persistence/tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   }

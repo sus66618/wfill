@@ -41,6 +41,7 @@ describe("createGame", () => {
       type: "game_created",
       gameId: "game-1",
       version: 1,
+      audience: { kind: "public" },
     });
     expect(result.events.slice(1)).toEqual(
       result.state.players.map((player, index) => ({
@@ -50,7 +51,17 @@ describe("createGame", () => {
         type: "role_assigned",
         seat: player.seat,
         role: player.roleId,
+        audience: { kind: "private", seat: player.seat },
       })),
+    );
+  });
+
+  it("makes every role assignment visible only to its assigned seat", () => {
+    const result = createGame({ gameId: "game-1", ruleset: SIX_PLAYER_RULESET, seed: "seed-a" });
+    const assignments = result.events.filter((event) => event.type === "role_assigned");
+
+    expect(assignments.map((event) => event.audience)).toEqual(
+      result.state.players.map((player) => ({ kind: "private", seat: player.seat })),
     );
   });
 });

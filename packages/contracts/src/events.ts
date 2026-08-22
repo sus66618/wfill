@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { CommandIdSchema, EventIdSchema, GameIdSchema, SeatIdSchema } from "./ids.js";
 
+export const EventAudienceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("public") }),
+  z.object({ kind: z.literal("private"), seat: SeatIdSchema }),
+]);
+
+export type EventAudience = z.infer<typeof EventAudienceSchema>;
+
 const EventEnvelopeSchema = z.object({
   eventId: EventIdSchema,
   gameId: GameIdSchema,
   version: z.number().int().min(0),
+  audience: EventAudienceSchema,
 });
 
 export const GameEventSchema = z.discriminatedUnion("type", [
@@ -18,3 +26,13 @@ export const GameEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type GameEvent = z.infer<typeof GameEventSchema>;
+
+export const filterEventsForAudience = (
+  events: readonly GameEvent[],
+  audience: EventAudience,
+): GameEvent[] => events.filter((event) =>
+  event.audience.kind === "public"
+  || (audience.kind === "private"
+    && event.audience.kind === "private"
+    && event.audience.seat === audience.seat),
+);

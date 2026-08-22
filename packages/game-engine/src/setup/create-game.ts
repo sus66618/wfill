@@ -56,6 +56,7 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
     gameId: typedGameId,
     version: 1,
     type: "game_created",
+    audience: { kind: "public" },
   }];
 
   for (const player of players) {
@@ -67,6 +68,7 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
       type: "role_assigned",
       seat: player.seat,
       role: player.roleId,
+      audience: { kind: "private", seat: player.seat },
     });
   }
 

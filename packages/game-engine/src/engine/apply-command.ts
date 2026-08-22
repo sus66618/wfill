@@ -6,8 +6,14 @@ import type {
   SeatId,
 } from "@wfill/contracts";
 import { legalActionForCommand } from "./legal-actions.js";
+import {
+  lastWordsEligibility,
+  resolveDeaths,
+  type Elimination,
+} from "./death-resolution.js";
 import { resolveNight } from "./night-resolution.js";
 import { createSpeakingOrder, validateSpeech } from "./speech-policy.js";
+import { evaluateVictory } from "./victory.js";
 import { resolveVoteRound } from "./vote-resolution.js";
 import type {
   GameState,
@@ -51,7 +57,9 @@ const isVotePhase = (state: GameState): boolean =>
 const isSpeechPhase = (state: GameState): boolean =>
   state.phase === "day_speech"
   || state.phase === "day_pk_speech"
-  || state.phase === "day_exile_last_words";
+  || state.phase === "day_exile_last_words"
+  || state.phase === "dawn_last_words"
+  || state.phase === "day_self_destruct_last_words";
 
 const dayRejectionReason = (state: GameState, command: GameCommand): string | undefined => {
   if (isVotePhase(state)) {
@@ -71,6 +79,12 @@ const dayRejectionReason = (state: GameState, command: GameCommand): string | un
   }
 
   if (isSpeechPhase(state)) {
+    if (state.phase === "day_speech" && command.type === "self_destruct") {
+      const actor = state.players.find((player) => player.seat === command.actorSeat);
+      if (actor?.roleId !== "werewolf") return "role_ability_forbidden";
+      if (state.selfDestructEnabled === false) return "self_destruct_disabled";
+      return undefined;
+    }
     if (command.type !== "submit_speech") return "action_window_closed";
     const speech = state.speech;
     if (speech === undefined || speech === null) return "action_window_closed";
@@ -98,7 +112,13 @@ const rejectionReason = (state: GameState, command: GameCommand): string | undef
 
   const actor = state.players.find((player) => player.seat === command.actorSeat);
   if (actor === undefined) return "actor_not_found";
-  if (!actor.alive) return "actor_not_alive";
+  if (state.phase === "settlement" || (state.outcome !== undefined && state.outcome !== "ongoing")) {
+    return "action_window_closed";
+  }
+  const isEligibleDeadLastWords = command.type === "submit_speech"
+    && (state.phase === "dawn_last_words" || state.phase === "day_self_destruct_last_words")
+    && state.speech?.eligibleSpeakerSeats.includes(command.actorSeat) === true;
+  if (!actor.alive && !isEligibleDeadLastWords) return "actor_not_alive";
 
   if (isVotePhase(state) || isSpeechPhase(state) || state.phase === "dawn") {
     return dayRejectionReason(state, command);
@@ -173,6 +193,50 @@ const rejected = (state: GameState, command: GameCommand, reason: string): Apply
 const aliveRolePlayers = (state: GameState, roleId: string): PlayerState[] =>
   state.players.filter((player) => player.alive && player.roleId === roleId);
 
+const eliminationBodies = (eliminations: readonly Elimination[]): EventBody[] =>
+  eliminations.map((elimination) => ({
+    type: "player_eliminated",
+    seat: elimination.seat,
+    cause: elimination.cause,
+    audience: { kind: "public" },
+  }));
+
+const completeDeathSettlement = (
+  state: GameState,
+  eliminations: readonly Elimination[],
+  initialBodies: readonly EventBody[],
+  continueWith: (settledState: GameState) => GameState,
+): { readonly state: GameState; readonly bodies: readonly EventBody[] } => {
+  const bodies = [...initialBodies, ...eliminationBodies(eliminations)];
+  const victory = evaluateVictory(state);
+  if (victory.status !== "ongoing") {
+    return {
+      state: {
+        ...state,
+        phase: "settlement",
+        outcome: victory.status,
+        pendingEffects: [],
+        pendingExileSeat: null,
+        speech: null,
+        vote: null,
+      },
+      bodies: [
+        ...bodies,
+        {
+          type: "game_finished",
+          winner: victory.winner,
+          audience: { kind: "public" },
+        },
+      ],
+    };
+  }
+
+  return {
+    state: { ...continueWith(state), outcome: "ongoing" },
+    bodies,
+  };
+};
+
 const actionRecordedBody = (command: GameCommand): EventBody => ({
   type: "night_action_recorded",
   actorSeat: command.actorSeat,
@@ -232,18 +296,18 @@ const resolvePendingNight = (
     });
   const resolution = resolveNight(state);
   const dayNumber = (state.dayNumber ?? 0) + 1;
-  const eligibleSpeakerSeats = resolution.state.players
-    .filter((player) => player.alive)
-    .map((player) => player.seat);
-  const speakingOrder = createSpeakingOrder({
-    seed: state.seed ?? String(state.gameId),
-    aliveSeats: eligibleSpeakerSeats,
-    priorDeathSeats: resolution.eliminatedSeats,
-    direction: "clockwise",
-  });
-  return {
-    state: {
-      ...resolution.state,
+  const daySpeechState = (settledState: GameState): GameState => {
+    const eligibleSpeakerSeats = settledState.players
+      .filter((player) => player.alive)
+      .map((player) => player.seat);
+    const speakingOrder = createSpeakingOrder({
+      seed: state.seed ?? String(state.gameId),
+      aliveSeats: eligibleSpeakerSeats,
+      priorDeathSeats: resolution.eliminatedSeats,
+      direction: "clockwise",
+    });
+    return {
+      ...settledState,
       phase: "day_speech",
       dayNumber,
       lastNightEliminatedSeats: resolution.eliminatedSeats,
@@ -257,14 +321,59 @@ const resolvePendingNight = (
       vote: null,
       publicVoteResult: null,
       pendingExileSeat: null,
+    };
+  };
+  const firstNightLastWords = resolution.eliminations.filter((elimination) =>
+    lastWordsEligibility({
+      dayNumber: elimination.dayNumber,
+      deathPhase: elimination.deathPhase,
+      ruleset: {
+        selfDestruct: { enabled: state.selfDestructEnabled !== false },
+      },
+    }));
+  const continueAfterNight = (settledState: GameState): GameState => {
+    if (firstNightLastWords.length === 0) return daySpeechState(settledState);
+    const eligibleSpeakerSeats = firstNightLastWords.map((elimination) => elimination.seat);
+    return {
+      ...settledState,
+      phase: "dawn_last_words",
+      dayNumber,
+      lastNightEliminatedSeats: resolution.eliminatedSeats,
+      speech: {
+        kind: "last_words",
+        eligibleSpeakerSeats,
+        speakingOrder: eligibleSpeakerSeats,
+        submittedSpeakerSeats: [],
+        limit: state.speechLimits?.lastWords.firstNightMaxCharacters ?? 150,
+      },
+      vote: null,
+      publicVoteResult: null,
+      pendingExileSeat: null,
+    };
+  };
+  const nextPhase = firstNightLastWords.length > 0 ? "dawn_last_words" : "day_speech";
+  const completed = completeDeathSettlement(
+    {
+      ...resolution.state,
+      dayNumber,
+      lastNightEliminatedSeats: resolution.eliminatedSeats,
     },
-    bodies: [
+    resolution.eliminations,
+    [
       ...inspectionBodies,
       {
         type: "night_resolved",
         eliminatedSeats: resolution.eliminatedSeats,
         audience: { kind: "public" },
       },
+    ],
+    continueAfterNight,
+  );
+  if (completed.state.phase === "settlement") return completed;
+  return {
+    state: completed.state,
+    bodies: [
+      ...completed.bodies,
       {
         type: "phase_advanced",
         phase: "dawn",
@@ -272,7 +381,7 @@ const resolvePendingNight = (
       },
       {
         type: "phase_advanced",
-        phase: "day_speech",
+        phase: nextPhase,
         audience: { kind: "public" },
       },
     ],
@@ -401,6 +510,46 @@ const resetNight = (state: GameState): GameState["night"] => ({
   wolfTargetSeat: undefined,
   potionUsed: false,
 });
+
+const advanceToNight = (state: GameState): GameState => ({
+  ...state,
+  phase: "night_wolf_discussion",
+  pendingEffects: [],
+  pendingExileSeat: null,
+  speech: null,
+  vote: null,
+  night: resetNight(state),
+});
+
+const applySelfDestructCommand = (
+  state: GameState,
+  command: Extract<GameCommand, { type: "self_destruct" }>,
+): { readonly state: GameState; readonly bodies: readonly EventBody[] } => {
+  const recordedState = withCommandRecord(state, command.commandId);
+  const resolution = resolveDeaths(recordedState, [{
+    type: "self_destruct",
+    targetSeat: command.actorSeat,
+  }]);
+  return completeDeathSettlement(
+    resolution.state,
+    resolution.eliminations,
+    [],
+    (settledState) => ({
+      ...settledState,
+      phase: "day_self_destruct_last_words",
+      pendingEffects: [],
+      pendingExileSeat: null,
+      speech: {
+        kind: "last_words",
+        eligibleSpeakerSeats: [command.actorSeat],
+        speakingOrder: [command.actorSeat],
+        submittedSpeakerSeats: [],
+        limit: state.speechLimits?.lastWords.selfDestructMaxCharacters ?? 30,
+      },
+      vote: null,
+    }),
+  );
+};
 
 const publicVoteResultFrom = (
   vote: VoteRoundState,
@@ -550,12 +699,62 @@ const applySpeechCommand = (
           pendingBallots: [],
         },
       };
-    } else {
+    } else if (state.phase === "dawn_last_words") {
+      const eligibleSpeakerSeats = nextState.players
+        .filter((player) => player.alive)
+        .map((player) => player.seat);
       nextState = {
         ...nextState,
-        phase: "settlement",
-        speech: null,
+        phase: "day_speech",
+        speech: {
+          kind: "ordinary",
+          eligibleSpeakerSeats,
+          speakingOrder: createSpeakingOrder({
+            seed: state.seed ?? String(state.gameId),
+            aliveSeats: eligibleSpeakerSeats,
+            priorDeathSeats: state.lastNightEliminatedSeats ?? [],
+            direction: "clockwise",
+          }),
+          submittedSpeakerSeats: [],
+          limit: state.speechLimits?.ordinary.maxCharacters ?? 220,
+        },
         vote: null,
+      };
+      bodies.push({
+        type: "phase_advanced",
+        phase: "day_speech",
+        audience: { kind: "public" },
+      });
+    } else if (state.phase === "day_self_destruct_last_words") {
+      nextState = advanceToNight(nextState);
+      bodies.push({
+        type: "phase_advanced",
+        phase: "night_wolf_discussion",
+        audience: { kind: "public" },
+      });
+    } else {
+      const pendingExileSeat = state.pendingExileSeat!;
+      const resolution = resolveDeaths(nextState, [{
+        type: "exile",
+        targetSeat: pendingExileSeat,
+      }]);
+      const completed = completeDeathSettlement(
+        resolution.state,
+        resolution.eliminations,
+        bodies,
+        advanceToNight,
+      );
+      if (completed.state.phase === "settlement") return completed;
+      return {
+        state: completed.state,
+        bodies: [
+          ...completed.bodies,
+          {
+            type: "phase_advanced",
+            phase: "night_wolf_discussion",
+            audience: { kind: "public" },
+          },
+        ],
       };
     }
   }
@@ -599,7 +798,9 @@ export const applyCommand = (state: GameState, command: GameCommand): ApplyComma
   if (reason !== undefined) return rejected(state, command, reason);
 
   let applied: { readonly state: GameState; readonly bodies: readonly EventBody[] };
-  if (isVotePhase(state)) {
+  if (command.type === "self_destruct") {
+    applied = applySelfDestructCommand(state, command);
+  } else if (isVotePhase(state)) {
     applied = applyVoteCommand(state, command as Extract<GameCommand, { type: "submit_vote" | "pass_action" }>);
   } else if (isSpeechPhase(state)) {
     applied = applySpeechCommand(state, command as Extract<GameCommand, { type: "submit_speech" }>);

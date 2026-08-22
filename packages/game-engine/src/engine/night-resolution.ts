@@ -1,9 +1,11 @@
 import type { SeatId } from "@wfill/contracts";
 import type { GameState, PlayerState } from "../state/game-state.js";
+import { resolveDeaths, type Elimination } from "./death-resolution.js";
 
 export interface NightResolutionResult {
   readonly state: GameState;
   readonly eliminatedSeats: readonly SeatId[];
+  readonly eliminations: readonly Elimination[];
 }
 
 const consumeWitchResource = (
@@ -30,27 +32,21 @@ const consumeWitchResource = (
 export const resolveNight = (state: GameState): NightResolutionResult => {
   const antidoteUsed = state.pendingEffects.some((effect) => effect.type === "antidote");
   const poisonEffect = state.pendingEffects.find((effect) => effect.type === "poison");
-  const wolfEffect = state.pendingEffects.find((effect) => effect.type === "wolf_kill");
-  const eliminatedSeats = new Set<SeatId>();
-
-  if (wolfEffect !== undefined && !antidoteUsed) {
-    eliminatedSeats.add(wolfEffect.targetSeat);
-  }
-  if (poisonEffect !== undefined) {
-    eliminatedSeats.add(poisonEffect.targetSeat);
-  }
+  const deathResolution = resolveDeaths(state, state.pendingEffects);
+  const eliminatedSeats = deathResolution.eliminations.map((elimination) => elimination.seat);
 
   return {
     state: {
-      ...state,
+      ...deathResolution.state,
       phase: "dawn",
-      players: state.players.map((player) => consumeWitchResource(
-        { ...player, alive: player.alive && !eliminatedSeats.has(player.seat) },
+      players: deathResolution.state.players.map((player) => consumeWitchResource(
+        player,
         antidoteUsed && player.roleId === "witch",
         poisonEffect !== undefined && player.roleId === "witch",
       )),
       pendingEffects: [],
     },
-    eliminatedSeats: [...eliminatedSeats],
+    eliminatedSeats,
+    eliminations: deathResolution.eliminations,
   };
 };

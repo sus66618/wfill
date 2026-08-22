@@ -7,12 +7,16 @@ export type GamePhase =
   | "night_seer_action"
   | "night_witch_action"
   | "dawn"
+  | "dawn_last_words"
   | "day_speech"
   | "day_vote"
   | "day_pk_speech"
   | "day_pk_vote"
   | "day_exile_last_words"
+  | "day_self_destruct_last_words"
   | "settlement";
+
+export type GameOutcome = "ongoing" | "good_win" | "wolf_win";
 
 export interface WitchResources {
   readonly antidoteAvailable: boolean;
@@ -35,7 +39,9 @@ export type PendingEffect =
   | { readonly type: "wolf_kill"; readonly targetSeat: SeatId }
   | { readonly type: "inspection"; readonly actorSeat: SeatId; readonly targetSeat: SeatId }
   | { readonly type: "antidote"; readonly actorSeat: SeatId }
-  | { readonly type: "poison"; readonly actorSeat: SeatId; readonly targetSeat: SeatId };
+  | { readonly type: "poison"; readonly actorSeat: SeatId; readonly targetSeat: SeatId }
+  | { readonly type: "exile"; readonly targetSeat: SeatId }
+  | { readonly type: "self_destruct"; readonly targetSeat: SeatId };
 
 export interface WolfSubmission {
   readonly actorSeat: SeatId;
@@ -90,10 +96,12 @@ export interface GameState {
   readonly rulesetVersion: string;
   readonly seed?: string;
   readonly speechLimits?: SpeechLimits;
+  readonly selfDestructEnabled?: boolean;
   readonly dayNumber?: number;
   readonly lastNightEliminatedSeats?: readonly SeatId[];
   readonly version: number;
   readonly phase: GamePhase;
+  readonly outcome?: GameOutcome;
   readonly players: readonly PlayerState[];
   readonly pendingEffects: readonly PendingEffect[];
   readonly processedCommandIds: readonly CommandId[];

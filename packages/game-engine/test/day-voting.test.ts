@@ -414,7 +414,20 @@ describe("day voting", () => {
       content: "遗言结束。",
     });
     expect(settled.state.phase).toBe("settlement");
-    expect(settled.state.pendingExileSeat).toBe(seat(2));
-    expect(settled.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(true);
+    expect(settled.state.pendingExileSeat).toBeNull();
+    expect(settled.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(false);
+    expect(settled.events.slice(-2)).toEqual([
+      expect.objectContaining({
+        type: "player_eliminated",
+        seat: seat(2),
+        cause: "exile",
+        audience: { kind: "public" },
+      }),
+      expect.objectContaining({
+        type: "game_finished",
+        winner: "good",
+        audience: { kind: "public" },
+      }),
+    ]);
   });
 });

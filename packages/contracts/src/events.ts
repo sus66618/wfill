@@ -39,6 +39,15 @@ const NightActionSchema = z.enum([
   "pass_action",
 ]);
 
+export const DeathCauseSchema = z.enum([
+  "wolf_kill",
+  "exile",
+  "poison",
+  "self_destruct",
+]);
+
+export type DeathCause = z.infer<typeof DeathCauseSchema>;
+
 const EventEnvelopeSchema = z.object({
   eventId: EventIdSchema,
   gameId: GameIdSchema,
@@ -160,8 +169,14 @@ export const GameEventSchema = z.union([
     audience: PublicEventAudienceSchema,
   }),
   EventEnvelopeSchema.extend({
+    type: z.literal("player_eliminated"),
+    seat: SeatIdSchema,
+    cause: DeathCauseSchema,
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
     type: z.literal("game_finished"),
-    winner: z.string().min(1),
+    winner: z.enum(["good", "werewolf"]),
     audience: PublicEventAudienceSchema,
   }),
 ]);

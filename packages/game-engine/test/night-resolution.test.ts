@@ -78,13 +78,13 @@ describe("night resolution", () => {
       }
     }
 
-    expect(state.phase).toBe("day_speech");
+    expect(state.phase).toBe("dawn_last_words");
     expect(state.lastNightEliminatedSeats).toEqual([seat(3), seat(6)]);
     expect(state.speech).toMatchObject({
-      kind: "ordinary",
-      eligibleSpeakerSeats: [seat(1), seat(2), seat(4), seat(5)],
-      speakingOrder: [seat(1), seat(2), seat(4), seat(5)],
-      limit: 220,
+      kind: "last_words",
+      eligibleSpeakerSeats: [seat(3), seat(6)],
+      speakingOrder: [seat(3), seat(6)],
+      limit: 150,
     });
     expect(state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(false);
     expect(state.players.find((entry) => entry.seat === seat(6))?.alive).toBe(false);
@@ -184,7 +184,12 @@ describe("night resolution", () => {
     );
     state = second.state;
 
-    expect(state.phase).toBe("day_speech");
+    expect(state.phase).toBe("dawn_last_words");
+    expect(state.speech).toMatchObject({
+      kind: "last_words",
+      eligibleSpeakerSeats: [seat(3)],
+      limit: 150,
+    });
     expect(state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(false);
     expect(second.events.map((event) => event.type)).toContain("night_resolved");
   });

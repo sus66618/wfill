@@ -106,6 +106,7 @@ export const sessionControlSchema = z.discriminatedUnion("type", [
 const updateEnvelopeSchema = z.object({
   sequence: z.number().int().positive(),
   gameId: GameIdSchema,
+  audience: spectatorModeSchema,
 });
 
 export const sessionUpdateSchema = z.discriminatedUnion("type", [

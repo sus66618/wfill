@@ -50,9 +50,8 @@ const insertEvents = (
 };
 
 const audienceKeyFor = (update: SessionUpdate): string => {
-  if (update.type !== "view_snapshot") return "shared";
-  if (update.view.mode.kind === "seat") return `seat:${update.view.mode.seat}`;
-  return update.view.mode.kind;
+  if (update.audience.kind === "seat") return `seat:${update.audience.seat}`;
+  return update.audience.kind;
 };
 
 const insertUpdates = (database: DatabaseSync, gameId: GameId, updates: readonly SessionUpdate[]): void => {
@@ -156,4 +155,3 @@ export class SqliteSessionRepository implements SessionRepository {
     this.database.close();
   }
 }
-

@@ -31,6 +31,7 @@ const updateFor = (gameId: GameId, sequence: number): SessionUpdate => ({
   type: "runner_status",
   sequence,
   gameId,
+  audience: { kind: "public" },
   mode: "running",
   inFlight: false,
 });

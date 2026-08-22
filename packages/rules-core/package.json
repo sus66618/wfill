@@ -1,0 +1,9 @@
+{
+  "name": "@wfill/rules-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --root ../.. --project @wfill/rules-core"
+  }
+}

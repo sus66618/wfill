@@ -78,9 +78,13 @@ export class SessionRegistry {
   }
 
   view(gameId: GameId): GameView {
+    return this.viewFor(gameId, { kind: "public" });
+  }
+
+  viewFor(gameId: GameId, mode: SpectatorMode): GameView {
     const session = this.repository.load(gameId);
     if (!session) throw new Error("session_not_found");
-    return projectGameView({ ...session, mode: { kind: "public" } });
+    return projectGameView({ ...session, mode });
   }
 
   async control(gameId: GameId, control: SessionControl): Promise<{ view: GameView; runner: RunnerStatus }> {

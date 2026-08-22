@@ -79,6 +79,18 @@ export const registerSessionEventRoutes = async (
     closeConnections.add(close);
     request.raw.once("close", close);
 
+    if (lastId > captured) {
+      const reset: SessionUpdate = {
+        type: "view_snapshot",
+        sequence: captured,
+        gameId: params.data.gameId,
+        audience: mode,
+        view: registry.viewFor(params.data.gameId, mode),
+      };
+      sentSequence = 0;
+      if (!writeUpdate(reset) && !closed) await once(reply.raw, "drain");
+    }
+
     for (const update of registry.readUpdatesAfter(params.data.gameId, lastId, mode)) {
       if (update.sequence <= captured && !writeUpdate(update) && !closed) await once(reply.raw, "drain");
     }

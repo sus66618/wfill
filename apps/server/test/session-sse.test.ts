@@ -103,4 +103,17 @@ describe("安全 SSE 更新", () => {
     expect(heartbeat[0]?.comment).toBe("heartbeat");
     expect((await fetch(`${address}/api/sessions/sse-heartbeat/events?view=seat:99`)).status).toBe(400);
   });
+
+  it("客户端序列超前时回退到当前安全快照", async () => {
+    const { address } = await start();
+    await fetch(`${address}/api/sessions`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ seed: "good-win", gameId: "sse-reset" }),
+    });
+    const events = await readSse(`${address}/api/sessions/sse-reset/events?view=public`, 1, {
+      "last-event-id": "999",
+    });
+    expect(events[0]?.id).toBe("1");
+    expect(JSON.stringify(events)).not.toContain("roleId");
+  });
 });

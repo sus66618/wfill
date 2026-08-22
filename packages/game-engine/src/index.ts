@@ -41,3 +41,9 @@ export type {
   WolfSubmission,
   WitchResources,
 } from "./state/game-state.js";
+export { runScriptedGame } from "./testing/scripted-controller.js";
+export type {
+  ScriptedCommand,
+  ScriptedGameInput,
+  ScriptedGameResult,
+} from "./testing/scripted-controller.js";

@@ -73,6 +73,16 @@ export const timelineItemSchema = z.discriminatedUnion("kind", [
     targetSeat: SeatIdSchema,
     faction: z.enum(["good", "werewolf"]),
   }).strict(),
+  timelineEnvelopeSchema.extend({
+    kind: z.literal("night_action"),
+    actorSeat: SeatIdSchema,
+    action: z.enum(["submit_wolf_kill", "inspect_player", "use_antidote", "use_poison", "pass_action"]),
+    targetSeat: SeatIdSchema.optional(),
+  }).strict(),
+  timelineEnvelopeSchema.extend({
+    kind: z.literal("wolf_decision"),
+    targetSeat: SeatIdSchema.nullable(),
+  }).strict(),
 ]);
 
 export const gameViewSchema = z.object({
@@ -115,4 +125,3 @@ export type SeatView = z.infer<typeof seatViewSchema>;
 export type TimelineItem = z.infer<typeof timelineItemSchema>;
 export type SessionControl = z.infer<typeof sessionControlSchema>;
 export type SessionUpdate = z.infer<typeof sessionUpdateSchema>;
-

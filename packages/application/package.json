@@ -19,6 +19,7 @@
   "dependencies": {
     "@wfill/contracts": "workspace:*",
     "@wfill/game-engine": "workspace:*",
+    "@wfill/model-gateway": "workspace:*",
     "@wfill/rules-core": "workspace:*"
   }
 }

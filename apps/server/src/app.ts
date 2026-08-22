@@ -1,9 +1,13 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { openSqliteDatabase } from "@wfill/persistence";
 import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerSessionEventRoutes } from "./routes/session-events.js";
 import { SessionRegistry } from "./runtime/session-registry.js";
 
-export interface BuildServerOptions { readonly databasePath: string }
+export interface BuildServerOptions {
+  readonly databasePath: string;
+  readonly heartbeatIntervalMs?: number;
+}
 
 export interface ServerRuntime {
   readonly app: FastifyInstance;
@@ -14,9 +18,12 @@ export interface ServerRuntime {
 export const buildServer = (options: BuildServerOptions): ServerRuntime => {
   const database = openSqliteDatabase(options.databasePath);
   const registry = new SessionRegistry(database);
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, keepAliveTimeout: 100, forceCloseConnections: true });
   app.get("/health", async () => ({ status: "ok" }));
   void app.register(async (scope) => registerSessionRoutes(scope, registry));
+  void app.register(async (scope) => registerSessionEventRoutes(scope, registry, {
+    heartbeatIntervalMs: options.heartbeatIntervalMs ?? 15_000,
+  }));
 
   let closed = false;
   return {

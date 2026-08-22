@@ -25,6 +25,7 @@ export interface ScriptedGameInput {
 export interface ScriptedGameResult {
   readonly finalState: GameState;
   readonly events: readonly GameEvent[];
+  readonly auditEvents: readonly GameEvent[];
   readonly consumedCommandCount: number;
   readonly invariantCheckCount: number;
 }
@@ -71,6 +72,7 @@ export const runScriptedGame = ({
   });
   let state = created.state;
   const events: GameEvent[] = [...created.events];
+  const auditEvents: GameEvent[] = [];
   let consumedCommandCount = 0;
   let invariantCheckCount = 0;
 
@@ -95,6 +97,7 @@ export const runScriptedGame = ({
 
     state = applied.state;
     events.push(...applied.events);
+    auditEvents.push(...(applied.auditEvents ?? []));
     consumedCommandCount += 1;
     assertGameState(state, previousVersion);
     invariantCheckCount += 1;
@@ -106,6 +109,7 @@ export const runScriptedGame = ({
   return {
     finalState: state,
     events,
+    auditEvents,
     consumedCommandCount,
     invariantCheckCount,
   };

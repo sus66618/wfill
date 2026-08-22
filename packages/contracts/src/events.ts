@@ -187,7 +187,7 @@ export const GameEventSchema = z.union([
     audience: z.object({ kind: z.literal("god") }),
   }),
   EventEnvelopeSchema.extend({
-    type: z.literal("state_checkpoint"),
+    type: z.literal("command_committed"),
     commandId: CommandIdSchema,
     state: z.record(z.string(), z.unknown()),
     audience: z.object({ kind: z.literal("god") }),

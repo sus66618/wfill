@@ -838,7 +838,7 @@ export const applyCommand = (state: GameState, command: GameCommand): ApplyComma
   const finalState: GameState = { ...applied.state, version: finalVersion };
   const checkpoint = {
     ...makeEvent(state, domainEvents.length, {
-      type: "state_checkpoint",
+      type: "command_committed",
       commandId: command.commandId,
       state: finalState as unknown as Record<string, unknown>,
       audience: { kind: "god" },

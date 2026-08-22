@@ -8,7 +8,7 @@ import {
   type SeatId,
 } from "@wfill/contracts";
 import { SIX_PLAYER_RULESET } from "@wfill/rules-core";
-import { applyCommand, createGame, replayEvents } from "@wfill/game-engine";
+import { applyCommand, createGame, restoreFromAuditJournal } from "@wfill/game-engine";
 
 const seat = (value: number): SeatId => value as SeatId;
 
@@ -26,7 +26,10 @@ describe("event replay and privacy", () => {
       targetSeat: target.seat,
     };
     const accepted = applyCommand(created.state, command);
-    const replayed = replayEvents(created.state, [...accepted.events, ...(accepted.auditEvents ?? [])]);
+    const replayed = restoreFromAuditJournal(created.state, {
+      domainEvents: accepted.events,
+      auditEvents: accepted.auditEvents ?? [],
+    });
 
     expect(replayed).toEqual(accepted.state);
     expect(replayed.processedCommandIds).toContain(command.commandId);
@@ -42,23 +45,38 @@ describe("event replay and privacy", () => {
       .every((event) => GameEventSchema.safeParse(event).success)).toBe(true);
   });
 
-  it("replays rejected commands while duplicate commands remain explicit no-ops", () => {
-    const created = createGame({ gameId: "reject-replay", ruleset: SIX_PLAYER_RULESET, seed: "reject-seed" });
-    const actor = created.state.players[0]!;
-    const rejectedCommand: GameCommand = {
-      commandId: "rejected-command" as CommandId,
-      gameId: created.state.gameId,
-      expectedVersion: created.state.version,
-      actorSeat: actor.seat,
-      type: "submit_speech",
-      content: "夜里不能公开发言。",
-    };
-    const rejected = applyCommand(created.state, rejectedCommand);
-    const replayed = replayEvents(created.state, rejected.events);
+  it("rejects missing, reversed, duplicate, stale, and identity-mismatched commits", () => {
+    const created = createGame({ gameId: "journal-validation", ruleset: SIX_PLAYER_RULESET, seed: "journal-seed" });
+    let state = created.state;
+    const wolves = state.players.filter((player) => player.roleId === "werewolf");
+    const target = state.players.find((player) => player.roleId !== "werewolf")!;
+    const domainEvents: GameEvent[] = [];
+    const auditEvents: GameEvent[] = [];
+    for (const [index, wolf] of wolves.entries()) {
+      const result = applyCommand(state, {
+        commandId: `journal-${index + 1}` as CommandId,
+        gameId: state.gameId,
+        expectedVersion: state.version,
+        actorSeat: wolf.seat,
+        type: "submit_wolf_kill",
+        targetSeat: target.seat,
+      });
+      state = result.state;
+      domainEvents.push(...result.events);
+      auditEvents.push(...(result.auditEvents ?? []));
+    }
+    const restore = (audits: readonly GameEvent[], domains = domainEvents) =>
+      restoreFromAuditJournal(created.state, { domainEvents: domains, auditEvents: audits });
 
-    expect(replayed.processedCommandIds).toContain(rejectedCommand.commandId);
-    expect(replayed.version).toBe(rejected.state.version);
-    expect(applyCommand(replayed, rejectedCommand)).toEqual({ state: replayed, events: [] });
+    expect(() => restore([])).toThrow("invalid_audit_journal:missing_commits");
+    expect(() => restore([...auditEvents].reverse())).toThrow("invalid_audit_journal:commit_order_mismatch");
+    expect(() => restore([auditEvents[0]!, auditEvents[0]!])).toThrow();
+    expect(() => restore([{ ...auditEvents[0]!, version: auditEvents[0]!.version - 1 }, auditEvents[1]!]))
+      .toThrow("invalid_audit_journal:stale_commit");
+    expect(() => restore([{ ...auditEvents[0]!, gameId: "another-game" }, auditEvents[1]!]))
+      .toThrow("invalid_audit_journal:game_mismatch");
+    expect(() => restore(auditEvents, domainEvents.slice(1)))
+      .toThrow("invalid_audit_journal:domain_version_gap");
   });
 
   it("shows a death without cause publicly and reveals cause only in god projection", () => {

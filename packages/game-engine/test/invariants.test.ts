@@ -96,6 +96,25 @@ describe("game state invariants", () => {
     })).toThrow("unsupported_ruleset");
   });
 
+  it("rejects same-id rulesets with altered victory or speech semantics", () => {
+    expect(() => createGame({
+      gameId: "empty-victory",
+      ruleset: { ...SIX_PLAYER_RULESET, victoryConditions: [] },
+      seed: "empty-victory-seed",
+    })).toThrow("unsupported_ruleset");
+    expect(() => createGame({
+      gameId: "speech-999",
+      ruleset: {
+        ...SIX_PLAYER_RULESET,
+        speechLimits: {
+          ...SIX_PLAYER_RULESET.speechLimits,
+          ordinary: { ...SIX_PLAYER_RULESET.speechLimits.ordinary, maxCharacters: 999 },
+        },
+      },
+      seed: "speech-999-seed",
+    })).toThrow("unsupported_ruleset");
+  });
+
   it.each([
     ["invalid_version", { version: -1 }],
     ["invalid_phase", { phase: "coffee_break" }],

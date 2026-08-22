@@ -43,7 +43,8 @@ export type {
   WolfSubmission,
   WitchResources,
 } from "./state/game-state.js";
-export { replayEvents } from "./engine/replay-events.js";
+export { restoreFromAuditJournal } from "./engine/restore-audit-journal.js";
+export type { AuditJournal } from "./engine/restore-audit-journal.js";
 export { runScriptedGame } from "./testing/scripted-controller.js";
 export type {
   ScriptedCommand,

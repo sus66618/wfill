@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameEvent, SeatId } from "@wfill/contracts";
-import { runScriptedGame } from "../src/index.js";
+import { createGame, restoreFromAuditJournal, runScriptedGame } from "../src/index.js";
+import { SIX_PLAYER_RULESET } from "@wfill/rules-core";
 import { GOOD_WIN_SCRIPT } from "./fixtures/good-win-script.js";
 import { WOLF_WIN_SCRIPT } from "./fixtures/wolf-win-script.js";
 
@@ -40,6 +41,19 @@ describe("scripted full games", () => {
 
     expect(repeated.finalState).toEqual(result.finalState);
     expect(repeated.events).toEqual(result.events);
+    expect(repeated.auditEvents).toEqual(result.auditEvents);
+    const initial = createGame({
+      gameId: `scripted-${GOOD_WIN_SCRIPT.seed}`,
+      ruleset: SIX_PLAYER_RULESET,
+      seed: GOOD_WIN_SCRIPT.seed,
+    }).state;
+    const restored = restoreFromAuditJournal(initial, {
+      domainEvents: result.events.slice(SETUP_EVENT_TYPES.length),
+      auditEvents: result.auditEvents,
+    });
+    expect(restored).toEqual(result.finalState);
+    const finalCommandId = result.auditEvents.at(-1)!.commandId!;
+    expect(restored.processedCommandIds).toContain(finalCommandId);
     expect(result.finalState.phase).toBe("settlement");
     expect(result.finalState.outcome).toBe("good_win");
     expect(result.events.at(-1)?.type).toBe("game_finished");

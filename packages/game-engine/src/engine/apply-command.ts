@@ -7,7 +7,7 @@ import type {
 } from "@wfill/contracts";
 import { legalActionForCommand } from "./legal-actions.js";
 import { resolveNight } from "./night-resolution.js";
-import { validateSpeech } from "./speech-policy.js";
+import { createSpeakingOrder, validateSpeech } from "./speech-policy.js";
 import { resolveVoteRound } from "./vote-resolution.js";
 import type {
   GameState,
@@ -88,7 +88,13 @@ const dayRejectionReason = (state: GameState, command: GameCommand): string | un
 
 const rejectionReason = (state: GameState, command: GameCommand): string | undefined => {
   if (state.gameId !== command.gameId) return "game_id_mismatch";
-  if (state.version !== command.expectedVersion) return "version_conflict";
+  const expectedVersion = isVotePhase(state)
+    && (command.type === "submit_vote" || command.type === "pass_action")
+    && state.vote !== undefined
+    && state.vote !== null
+    ? state.vote.roundVersion
+    : state.version;
+  if (expectedVersion !== command.expectedVersion) return "version_conflict";
 
   const actor = state.players.find((player) => player.seat === command.actorSeat);
   if (actor === undefined) return "actor_not_found";
@@ -225,13 +231,48 @@ const resolvePendingNight = (
       };
     });
   const resolution = resolveNight(state);
+  const dayNumber = (state.dayNumber ?? 0) + 1;
+  const eligibleSpeakerSeats = resolution.state.players
+    .filter((player) => player.alive)
+    .map((player) => player.seat);
+  const speakingOrder = createSpeakingOrder({
+    seed: state.seed ?? String(state.gameId),
+    aliveSeats: eligibleSpeakerSeats,
+    priorDeathSeats: resolution.eliminatedSeats,
+    direction: "clockwise",
+  });
   return {
-    state: resolution.state,
+    state: {
+      ...resolution.state,
+      phase: "day_speech",
+      dayNumber,
+      lastNightEliminatedSeats: resolution.eliminatedSeats,
+      speech: {
+        kind: "ordinary",
+        eligibleSpeakerSeats,
+        speakingOrder,
+        submittedSpeakerSeats: [],
+        limit: state.speechLimits?.ordinary.maxCharacters ?? 220,
+      },
+      vote: null,
+      publicVoteResult: null,
+      pendingExileSeat: null,
+    },
     bodies: [
       ...inspectionBodies,
       {
         type: "night_resolved",
         eliminatedSeats: resolution.eliminatedSeats,
+        audience: { kind: "public" },
+      },
+      {
+        type: "phase_advanced",
+        phase: "dawn",
+        audience: { kind: "public" },
+      },
+      {
+        type: "phase_advanced",
+        phase: "day_speech",
         audience: { kind: "public" },
       },
     ],
@@ -454,6 +495,7 @@ const completeVoteRound = (
       ...state,
       phase: "day_exile_last_words",
       publicVoteResult,
+      pendingExileSeat: resolution.exiledSeat,
       vote: null,
       speech: {
         kind: "last_words",
@@ -493,20 +535,27 @@ const applySpeechCommand = (
         return completeVoteRound(nextState, resolution, bodies);
       }
     } else if (state.phase === "day_speech") {
-      nextState = { ...nextState, phase: "day_vote", speech: null };
-    } else {
-      const exiledSeat = state.publicVoteResult?.exiledSeat;
+      const eligibleVoterSeats = nextState.players
+        .filter((player) => player.alive)
+        .map((player) => player.seat);
       nextState = {
         ...nextState,
-        phase: "night_wolf_discussion",
-        players: exiledSeat === undefined
-          ? nextState.players
-          : nextState.players.map((player) => player.seat === exiledSeat
-            ? { ...player, alive: false }
-            : player),
+        phase: "day_vote",
+        speech: null,
+        vote: {
+          kind: "exile",
+          roundVersion: state.version + bodies.length,
+          eligibleVoterSeats,
+          candidateSeats: eligibleVoterSeats,
+          pendingBallots: [],
+        },
+      };
+    } else {
+      nextState = {
+        ...nextState,
+        phase: "settlement",
         speech: null,
         vote: null,
-        night: resetNight(nextState),
       };
     }
   }

@@ -77,6 +77,10 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
       gameId: typedGameId,
       rulesetId: ruleset.id,
       rulesetVersion: ruleset.version,
+      seed,
+      speechLimits: ruleset.speechLimits,
+      dayNumber: 0,
+      lastNightEliminatedSeats: [],
       version: events.length,
       phase: "night_wolf_discussion",
       players,
@@ -91,6 +95,7 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
       speech: null,
       vote: null,
       publicVoteResult: null,
+      pendingExileSeat: null,
     },
     events,
   };

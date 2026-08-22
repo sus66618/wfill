@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CommandId, GameCommand, GameId, SeatId } from "@wfill/contracts";
-import { applyCommand } from "../src/index.js";
+import { SIX_PLAYER_RULESET } from "@wfill/rules-core";
+import { applyCommand, createGame } from "../src/index.js";
 import type { GameState, PlayerState } from "../src/index.js";
 
 const seat = (value: number): SeatId => value as SeatId;
@@ -77,7 +78,14 @@ describe("night resolution", () => {
       }
     }
 
-    expect(state.phase).toBe("dawn");
+    expect(state.phase).toBe("day_speech");
+    expect(state.lastNightEliminatedSeats).toEqual([seat(3), seat(6)]);
+    expect(state.speech).toMatchObject({
+      kind: "ordinary",
+      eligibleSpeakerSeats: [seat(1), seat(2), seat(4), seat(5)],
+      speakingOrder: [seat(1), seat(2), seat(4), seat(5)],
+      limit: 220,
+    });
     expect(state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(false);
     expect(state.players.find((entry) => entry.seat === seat(6))?.alive).toBe(false);
     expect(state.players.find((entry) => entry.seat === seat(4))?.privateState.witchResources)
@@ -148,7 +156,7 @@ describe("night resolution", () => {
 
     const result = runCommand(state, { type: "use_antidote", actorSeat: seat(4) }, 4);
 
-    expect(result.state.phase).toBe("dawn");
+    expect(result.state.phase).toBe("day_speech");
     expect(result.state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(true);
     expect(result.state.players.find((entry) => entry.seat === seat(4))?.privateState.witchResources)
       .toEqual({ antidoteAvailable: false, poisonAvailable: true });
@@ -176,8 +184,49 @@ describe("night resolution", () => {
     );
     state = second.state;
 
-    expect(state.phase).toBe("dawn");
+    expect(state.phase).toBe("day_speech");
     expect(state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(false);
     expect(second.events.map((event) => event.type)).toContain("night_resolved");
+  });
+
+  it("reaches deterministic day speech from createGame through a complete real night", () => {
+    let state = createGame({
+      gameId: "game-reachable-day",
+      ruleset: SIX_PLAYER_RULESET,
+      seed: "reach-day",
+    }).state;
+    const wolves = state.players.filter((entry) => entry.roleId === "werewolf");
+    const seer = state.players.find((entry) => entry.roleId === "seer")!;
+    const witch = state.players.find((entry) => entry.roleId === "witch")!;
+
+    let index = 1;
+    for (const wolf of wolves) {
+      state = runCommand(state, { type: "pass_action", actorSeat: wolf.seat }, index).state;
+      index += 1;
+    }
+    state = runCommand(state, { type: "pass_action", actorSeat: seer.seat }, index).state;
+    index += 1;
+    const final = runCommand(state, { type: "pass_action", actorSeat: witch.seat }, index);
+
+    expect(final.state.phase).toBe("day_speech");
+    expect(final.state.dayNumber).toBe(1);
+    expect(final.state.lastNightEliminatedSeats).toEqual([]);
+    expect(final.state.speech).toEqual({
+      kind: "ordinary",
+      eligibleSpeakerSeats: [seat(1), seat(2), seat(3), seat(4), seat(5), seat(6)],
+      speakingOrder: [seat(4), seat(5), seat(6), seat(1), seat(2), seat(3)],
+      submittedSpeakerSeats: [],
+      limit: 220,
+    });
+    expect(final.events.map((event) => event.type)).toEqual([
+      "night_action_recorded",
+      "night_resolved",
+      "phase_advanced",
+      "phase_advanced",
+    ]);
+    expect(final.events.slice(-2)).toEqual([
+      expect.objectContaining({ phase: "dawn", audience: { kind: "public" } }),
+      expect.objectContaining({ phase: "day_speech", audience: { kind: "public" } }),
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 import type { CommandId, GameId, SeatId } from "@wfill/contracts";
+import type { SpeechLimits } from "@wfill/rules-core";
 
 export type GamePhase =
   | "night_wolf_discussion"
@@ -10,7 +11,8 @@ export type GamePhase =
   | "day_vote"
   | "day_pk_speech"
   | "day_pk_vote"
-  | "day_exile_last_words";
+  | "day_exile_last_words"
+  | "settlement";
 
 export interface WitchResources {
   readonly antidoteAvailable: boolean;
@@ -86,6 +88,10 @@ export interface GameState {
   readonly gameId: GameId;
   readonly rulesetId: string;
   readonly rulesetVersion: string;
+  readonly seed?: string;
+  readonly speechLimits?: SpeechLimits;
+  readonly dayNumber?: number;
+  readonly lastNightEliminatedSeats?: readonly SeatId[];
   readonly version: number;
   readonly phase: GamePhase;
   readonly players: readonly PlayerState[];
@@ -95,4 +101,5 @@ export interface GameState {
   readonly speech?: SpeechState | null;
   readonly vote?: VoteRoundState | null;
   readonly publicVoteResult?: PublicVoteResult | null;
+  readonly pendingExileSeat?: SeatId | null;
 }

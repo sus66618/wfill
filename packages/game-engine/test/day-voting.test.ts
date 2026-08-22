@@ -58,22 +58,104 @@ const runCommand = (
   expectedVersion: state.version,
 } as GameCommand);
 
+const runCommandAtVersion = (
+  state: GameState,
+  input: Omit<GameCommand, "commandId" | "gameId" | "expectedVersion">,
+  expectedVersion: number,
+) => applyCommand(state, {
+  ...input,
+  commandId: `day-command-${commandIndex += 1}` as CommandId,
+  gameId: state.gameId,
+  expectedVersion,
+} as GameCommand);
+
 const finishFirstTie = (): ReturnType<typeof applyCommand> => {
   let state = openVoteState();
-  let result = runCommand(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) });
+  const roundVersion = state.vote!.roundVersion;
+  let result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }, roundVersion);
   state = result.state;
-  result = runCommand(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(3) });
+  result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(3) }, roundVersion);
   state = result.state;
-  result = runCommand(state, { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) });
+  result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) }, roundVersion);
   state = result.state;
-  result = runCommand(state, { type: "submit_vote", actorSeat: seat(4), targetSeat: seat(3) });
+  result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(4), targetSeat: seat(3) }, roundVersion);
   state = result.state;
-  result = runCommand(state, { type: "submit_vote", actorSeat: seat(5), targetSeat: seat(4) });
+  result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(5), targetSeat: seat(4) }, roundVersion);
   state = result.state;
-  return runCommand(state, { type: "pass_action", actorSeat: seat(6) });
+  return runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(6) }, roundVersion);
 };
 
 describe("day voting", () => {
+  it("accepts every simultaneous ballot against one frozen round version", () => {
+    let state = openVoteState();
+    const inputs = [
+      { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) },
+      { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(3) },
+      { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) },
+      { type: "submit_vote", actorSeat: seat(4), targetSeat: seat(3) },
+      { type: "submit_vote", actorSeat: seat(5), targetSeat: seat(4) },
+      { type: "pass_action", actorSeat: seat(6) },
+    ] as const;
+
+    for (const input of inputs) {
+      const result = runCommandAtVersion(state, input, 10);
+      expect(result.events[0]).toMatchObject({ type: "vote_accepted" });
+      state = result.state;
+    }
+
+    expect(state.publicVoteResult?.ballots).toHaveLength(6);
+    expect(state.vote).toMatchObject({ kind: "pk", roundVersion: state.version });
+  });
+
+  it("rejects a ballot that substitutes the mutable state version for the round version", () => {
+    const first = runCommandAtVersion(openVoteState(), {
+      type: "submit_vote",
+      actorSeat: seat(1),
+      targetSeat: seat(2),
+    }, 10);
+    const result = runCommandAtVersion(first.state, {
+      type: "submit_vote",
+      actorSeat: seat(2),
+      targetSeat: seat(3),
+    }, first.state.version);
+
+    expect(first.state.version).toBe(11);
+    expect(result.events[0]).toMatchObject({
+      type: "action_rejected",
+      reason: "version_conflict",
+    });
+    expect(result.state.vote?.pendingBallots).toEqual([
+      { actorSeat: seat(1), targetSeat: seat(2) },
+    ]);
+  });
+
+  it("keeps non-vote commands on the current state version during voting", () => {
+    const first = runCommandAtVersion(openVoteState(), {
+      type: "submit_vote",
+      actorSeat: seat(1),
+      targetSeat: seat(2),
+    }, 10);
+    const staleSpeech = runCommandAtVersion(first.state, {
+      type: "submit_speech",
+      actorSeat: seat(2),
+      content: "这不是投票命令。",
+    }, 10);
+    const currentSpeech = runCommandAtVersion(first.state, {
+      type: "submit_speech",
+      actorSeat: seat(2),
+      content: "这仍然不是投票命令。",
+    }, first.state.version);
+
+    expect(staleSpeech.events[0]).toMatchObject({
+      type: "action_rejected",
+      reason: "version_conflict",
+    });
+    expect(currentSpeech.events[0]).toMatchObject({
+      type: "action_rejected",
+      reason: "action_window_closed",
+    });
+  });
+
   it("does not expose pending ballots before the round closes", () => {
     const result = runCommand(openVoteState(), {
       type: "submit_vote",
@@ -189,10 +271,11 @@ describe("day voting", () => {
       actorSeat: seat(3),
       content: "三号 PK 发言",
     }).state;
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }).state;
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(4), targetSeat: seat(3) }).state;
-    state = runCommand(state, { type: "pass_action", actorSeat: seat(5) }).state;
-    const result = runCommand(state, { type: "pass_action", actorSeat: seat(6) });
+    const roundVersion = state.vote!.roundVersion;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }, roundVersion).state;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(4), targetSeat: seat(3) }, roundVersion).state;
+    state = runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(5) }, roundVersion).state;
+    const result = runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(6) }, roundVersion);
 
     expect(result.state.phase).toBe("night_wolf_discussion");
     expect(result.state.vote).toBeNull();
@@ -275,8 +358,9 @@ describe("day voting", () => {
         pendingBallots: [],
       },
     };
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(3) }).state;
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) }).state;
+    const roundVersion = state.vote!.roundVersion;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(3) }, roundVersion).state;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) }, roundVersion).state;
     state = runCommand(state, { type: "submit_speech", actorSeat: seat(2), content: "二号发言" }).state;
     const result = runCommand(state, { type: "submit_speech", actorSeat: seat(3), content: "三号发言" });
 
@@ -298,11 +382,13 @@ describe("day voting", () => {
         candidateSeats: [seat(2), seat(3)],
       },
     };
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }).state;
-    state = runCommand(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(2) }).state;
-    const result = runCommand(state, { type: "pass_action", actorSeat: seat(3) });
+    const roundVersion = state.vote!.roundVersion;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }, roundVersion).state;
+    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(2) }, roundVersion).state;
+    const result = runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(3) }, roundVersion);
 
     expect(result.state.phase).toBe("day_exile_last_words");
+    expect(result.state.pendingExileSeat).toBe(seat(2));
     expect(result.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(true);
     expect(result.events.at(-1)).toMatchObject({
       type: "exile_opened",
@@ -327,7 +413,8 @@ describe("day voting", () => {
       actorSeat: seat(2),
       content: "遗言结束。",
     });
-    expect(settled.state.phase).toBe("night_wolf_discussion");
-    expect(settled.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(false);
+    expect(settled.state.phase).toBe("settlement");
+    expect(settled.state.pendingExileSeat).toBe(seat(2));
+    expect(settled.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(true);
   });
 });

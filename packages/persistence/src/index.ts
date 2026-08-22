@@ -6,3 +6,10 @@ export {
 export type { RecoveredSession } from "./sqlite/session-recovery.js";
 export { PersistenceConflictError, SqliteSessionRepository } from "./sqlite/session-repository.js";
 export { SqliteUpdateLogRepository } from "./sqlite/update-log-repository.js";
+export { SqliteModelRepository } from "./sqlite/model-repository.js";
+export type {
+  ModelCallMetadata,
+  PlayableModelRecord,
+  SessionSeatModelBinding,
+  StoredModel,
+} from "./sqlite/model-repository.js";

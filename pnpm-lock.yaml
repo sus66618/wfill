@@ -92,9 +92,15 @@ importers:
       '@wfill/game-engine':
         specifier: workspace:*
         version: link:../game-engine
+      '@wfill/model-gateway':
+        specifier: workspace:*
+        version: link:../model-gateway
       '@wfill/rules-core':
         specifier: workspace:*
         version: link:../rules-core
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/rules-core: {}
 

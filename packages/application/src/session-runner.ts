@@ -14,6 +14,7 @@ import type {
   SessionRepository,
 } from "./ports.js";
 import { projectGameView } from "./project-game-view.js";
+import { ModelTurnRequiredError } from "./model/failure-policy.js";
 
 export type RunnerMode = "idle" | "running" | "paused" | "finished" | "failed";
 
@@ -157,6 +158,11 @@ export class GameSessionRunner {
           speechBudget,
         }, this.activeAbort.signal);
       } catch (error) {
+        if (error instanceof ModelTurnRequiredError) {
+          this.currentStatus = { mode: "paused", inFlight: false };
+          this.desiredMode = "paused";
+          return;
+        }
         this.currentStatus = { mode: "failed", inFlight: false };
         this.desiredMode = "paused";
         throw error;

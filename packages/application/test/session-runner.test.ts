@@ -13,6 +13,7 @@ import { WOLF_WIN_SCRIPT } from "../../game-engine/test/fixtures/wolf-win-script
 import {
   GameSessionRunner,
   InMemoryGameUpdatePublisher,
+  ModelTurnRequiredError,
   ScriptedPlayerController,
   StaticControllerRegistry,
   type SessionRepository,
@@ -77,6 +78,25 @@ const createRunner = (seed: string, commands: readonly ScriptedCommand[]) => {
 };
 
 describe("单写者对局编排器", () => {
+  it("强制模型动作最终失败时暂停且不改变对局", async () => {
+    const created = createGame({ gameId: "mandatory-pause", ruleset: SIX_PLAYER_RULESET, seed: "good-win" });
+    const repository = new MemorySessionRepository({
+      initialState: created.state, state: created.state, playerEvents: created.events, auditEvents: [],
+    });
+    const failingController = { request: async () => { throw new ModelTurnRequiredError(); } };
+    const controllers = new Map<SeatId, typeof failingController>();
+    for (let value = 1; value <= 6; value += 1) controllers.set(value as SeatId, failingController);
+    const runner = new GameSessionRunner({
+      gameId: created.state.gameId,
+      repository,
+      controllers: new StaticControllerRegistry(controllers),
+      publisher: new InMemoryGameUpdatePublisher(),
+    });
+    await expect(runner.step()).resolves.toBeUndefined();
+    expect(runner.status()).toEqual({ mode: "paused", inFlight: false });
+    expect(repository.load(created.state.gameId)?.state.version).toBe(created.state.version);
+  });
+
   it("单步模式只处理一条命令并重新暂停", async () => {
     const fixture = createRunner(GOOD_WIN_SCRIPT.seed, GOOD_WIN_SCRIPT.commands);
     await fixture.runner.step();

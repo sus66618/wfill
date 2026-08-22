@@ -7,3 +7,4 @@ export * from "./views.js";
 export * from "./model/prompt-builder.js";
 export * from "./model/decision-parser.js";
 export * from "./model/model-player-controller.js";
+export * from "./model/failure-policy.js";

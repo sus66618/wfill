@@ -23,6 +23,16 @@ describe("runtime contracts", () => {
     expect(command.type).toBe("submit_vote");
   });
 
+  it("does not define a phase-one timeout command", () => {
+    expect(GameCommandSchema.safeParse({
+      commandId: "cmd-timeout",
+      gameId: "game-1",
+      expectedVersion: 4,
+      actorSeat: 2,
+      type: "timeout_vote",
+    }).success).toBe(false);
+  });
+
   it("requires an explicit audience for every event", () => {
     expect(GameEventSchema.safeParse({
       eventId: "event-1",
@@ -185,5 +195,50 @@ describe("runtime contracts", () => {
       ...envelope,
       audience: { kind: "public" },
     }).audience).toEqual({ kind: "public" });
+  });
+
+  it("keeps accepted ballots private and requires one public reveal", () => {
+    const accepted = {
+      eventId: "event-vote-private",
+      gameId: "game-1",
+      version: 11,
+      type: "vote_accepted",
+      actorSeat: 1,
+      targetSeat: 3,
+    };
+    const revealed = {
+      eventId: "event-vote-public",
+      gameId: "game-1",
+      version: 12,
+      type: "vote_revealed",
+      roundKind: "exile",
+      roundVersion: 10,
+      ballots: [
+        { actorSeat: 1, targetSeat: 3 },
+        { actorSeat: 2, targetSeat: null },
+      ],
+      tally: [{ targetSeat: 3, votes: 1 }],
+    };
+
+    expect(GameEventSchema.safeParse({
+      ...accepted,
+      audience: { kind: "public" },
+    }).success).toBe(false);
+    const privateEvent = GameEventSchema.parse({
+      ...accepted,
+      audience: { kind: "private", seat: 1 },
+    });
+    expect(privateEvent).toMatchObject(accepted);
+    expect(GameEventSchema.safeParse({
+      ...revealed,
+      audience: { kind: "private", seat: 1 },
+    }).success).toBe(false);
+    const publicEvent = GameEventSchema.parse({
+      ...revealed,
+      audience: { kind: "public" },
+    });
+    expect(publicEvent).toMatchObject(revealed);
+    expect(filterEventsForAudience([privateEvent, publicEvent], { kind: "public" }))
+      .toEqual([publicEvent]);
   });
 });

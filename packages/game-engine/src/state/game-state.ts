@@ -5,7 +5,12 @@ export type GamePhase =
   | "night_wolf_final_confirmation"
   | "night_seer_action"
   | "night_witch_action"
-  | "dawn";
+  | "dawn"
+  | "day_speech"
+  | "day_vote"
+  | "day_pk_speech"
+  | "day_pk_vote"
+  | "day_exile_last_words";
 
 export interface WitchResources {
   readonly antidoteAvailable: boolean;
@@ -43,6 +48,40 @@ export interface NightState {
   readonly potionUsed: boolean;
 }
 
+export interface SpeechState {
+  readonly kind: "ordinary" | "pk" | "last_words";
+  readonly eligibleSpeakerSeats: readonly SeatId[];
+  readonly speakingOrder: readonly SeatId[];
+  readonly submittedSpeakerSeats: readonly SeatId[];
+  readonly limit: number;
+}
+
+export interface VoteBallot {
+  readonly actorSeat: SeatId;
+  readonly targetSeat: SeatId | null;
+}
+
+export interface VoteRoundState {
+  readonly kind: "exile" | "pk";
+  readonly roundVersion: number;
+  readonly eligibleVoterSeats: readonly SeatId[];
+  readonly candidateSeats: readonly SeatId[];
+  readonly pendingBallots: readonly VoteBallot[];
+}
+
+export interface VoteTallyEntry {
+  readonly targetSeat: SeatId;
+  readonly votes: number;
+}
+
+export interface PublicVoteResult {
+  readonly roundKind: "exile" | "pk";
+  readonly roundVersion: number;
+  readonly ballots: readonly VoteBallot[];
+  readonly tally: readonly VoteTallyEntry[];
+  readonly exiledSeat?: SeatId;
+}
+
 export interface GameState {
   readonly gameId: GameId;
   readonly rulesetId: string;
@@ -53,4 +92,7 @@ export interface GameState {
   readonly pendingEffects: readonly PendingEffect[];
   readonly processedCommandIds: readonly CommandId[];
   readonly night: NightState;
+  readonly speech?: SpeechState | null;
+  readonly vote?: VoteRoundState | null;
+  readonly publicVoteResult?: PublicVoteResult | null;
 }

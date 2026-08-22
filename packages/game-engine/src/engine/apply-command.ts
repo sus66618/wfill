@@ -7,7 +7,16 @@ import type {
 } from "@wfill/contracts";
 import { legalActionForCommand } from "./legal-actions.js";
 import { resolveNight } from "./night-resolution.js";
-import type { GameState, PendingEffect, PlayerState, WolfSubmission } from "../state/game-state.js";
+import { validateSpeech } from "./speech-policy.js";
+import { resolveVoteRound } from "./vote-resolution.js";
+import type {
+  GameState,
+  PendingEffect,
+  PlayerState,
+  PublicVoteResult,
+  VoteRoundState,
+  WolfSubmission,
+} from "../state/game-state.js";
 
 export interface ApplyCommandResult {
   readonly state: GameState;
@@ -36,6 +45,47 @@ const withCommandRecord = (state: GameState, commandId: CommandId): GameState =>
     : [...state.processedCommandIds, commandId],
 });
 
+const isVotePhase = (state: GameState): boolean =>
+  state.phase === "day_vote" || state.phase === "day_pk_vote";
+
+const isSpeechPhase = (state: GameState): boolean =>
+  state.phase === "day_speech"
+  || state.phase === "day_pk_speech"
+  || state.phase === "day_exile_last_words";
+
+const dayRejectionReason = (state: GameState, command: GameCommand): string | undefined => {
+  if (isVotePhase(state)) {
+    if (command.type !== "submit_vote" && command.type !== "pass_action") {
+      return "action_window_closed";
+    }
+    const vote = state.vote;
+    if (vote === undefined || vote === null) return "action_window_closed";
+    if (!vote.eligibleVoterSeats.includes(command.actorSeat)) return "voter_not_eligible";
+    if (vote.pendingBallots.some((ballot) => ballot.actorSeat === command.actorSeat)) {
+      return "actor_already_submitted";
+    }
+    if (command.type === "submit_vote" && !vote.candidateSeats.includes(command.targetSeat)) {
+      return "illegal_target";
+    }
+    return undefined;
+  }
+
+  if (isSpeechPhase(state)) {
+    if (command.type !== "submit_speech") return "action_window_closed";
+    const speech = state.speech;
+    if (speech === undefined || speech === null) return "action_window_closed";
+    if (!speech.eligibleSpeakerSeats.includes(command.actorSeat)) return "speaker_not_eligible";
+    if (speech.submittedSpeakerSeats.includes(command.actorSeat)) return "actor_already_submitted";
+    const currentSpeaker = speech.speakingOrder
+      .find((seat) => !speech.submittedSpeakerSeats.includes(seat));
+    if (currentSpeaker !== command.actorSeat) return "speaker_out_of_order";
+    const validation = validateSpeech(command.content, speech.limit);
+    return validation.ok ? undefined : validation.reason;
+  }
+
+  return "action_window_closed";
+};
+
 const rejectionReason = (state: GameState, command: GameCommand): string | undefined => {
   if (state.gameId !== command.gameId) return "game_id_mismatch";
   if (state.version !== command.expectedVersion) return "version_conflict";
@@ -43,6 +93,10 @@ const rejectionReason = (state: GameState, command: GameCommand): string | undef
   const actor = state.players.find((player) => player.seat === command.actorSeat);
   if (actor === undefined) return "actor_not_found";
   if (!actor.alive) return "actor_not_alive";
+
+  if (isVotePhase(state) || isSpeechPhase(state) || state.phase === "dawn") {
+    return dayRejectionReason(state, command);
+  }
 
   const legalAction = legalActionForCommand(state, command);
   if (legalAction === undefined) {
@@ -298,6 +352,195 @@ const applyWitchCommand = (
   };
 };
 
+const resetNight = (state: GameState): GameState["night"] => ({
+  ...state.night,
+  wolfConfirmationRound: 1,
+  wolfSubmissions: [],
+  submittedActorSeats: [],
+  wolfTargetSeat: undefined,
+  potionUsed: false,
+});
+
+const publicVoteResultFrom = (
+  vote: VoteRoundState,
+  resolution: Exclude<ReturnType<typeof resolveVoteRound>, { kind: "pending" }>,
+): PublicVoteResult => ({
+  roundKind: vote.kind,
+  roundVersion: vote.roundVersion,
+  ballots: resolution.ballots,
+  tally: resolution.tally,
+  ...(resolution.kind === "exile" ? { exiledSeat: resolution.exiledSeat } : {}),
+});
+
+const completeVoteRound = (
+  state: GameState,
+  resolution: Exclude<ReturnType<typeof resolveVoteRound>, { kind: "pending" }>,
+  initialBodies: readonly EventBody[],
+): { readonly state: GameState; readonly bodies: readonly EventBody[] } => {
+  const completedVote = state.vote!;
+  const publicVoteResult = publicVoteResultFrom(completedVote, resolution);
+  const bodies: EventBody[] = [
+    ...initialBodies,
+    {
+      type: "vote_revealed",
+      roundKind: completedVote.kind,
+      roundVersion: completedVote.roundVersion,
+      ballots: resolution.ballots,
+      tally: resolution.tally,
+      audience: { kind: "public" },
+    },
+  ];
+
+  if (resolution.kind === "open_pk") {
+    const eligibleVoterSeats = completedVote.eligibleVoterSeats
+      .filter((seat) => !resolution.tiedCandidateSeats.includes(seat));
+    const pkRoundVersion = state.version + bodies.length + 1;
+    bodies.push({
+      type: "pk_round_opened",
+      candidateSeats: resolution.tiedCandidateSeats,
+      eligibleVoterSeats,
+      audience: { kind: "public" },
+    });
+    return {
+      state: {
+        ...state,
+        phase: "day_pk_speech",
+        publicVoteResult,
+        speech: {
+          kind: "pk",
+          eligibleSpeakerSeats: resolution.tiedCandidateSeats,
+          speakingOrder: resolution.tiedCandidateSeats,
+          submittedSpeakerSeats: [],
+          limit: 150,
+        },
+        vote: {
+          kind: "pk",
+          roundVersion: pkRoundVersion,
+          eligibleVoterSeats,
+          candidateSeats: resolution.tiedCandidateSeats,
+          pendingBallots: [],
+        },
+      },
+      bodies,
+    };
+  }
+
+  if (resolution.kind === "no_exile") {
+    bodies.push({
+      type: "vote_tied_no_exile",
+      tiedCandidateSeats: resolution.tiedCandidateSeats,
+      audience: { kind: "public" },
+    });
+    return {
+      state: {
+        ...state,
+        phase: "night_wolf_discussion",
+        publicVoteResult,
+        speech: null,
+        vote: null,
+        night: resetNight(state),
+      },
+      bodies,
+    };
+  }
+
+  bodies.push({
+    type: "exile_opened",
+    exiledSeat: resolution.exiledSeat,
+    audience: { kind: "public" },
+  });
+  return {
+    state: {
+      ...state,
+      phase: "day_exile_last_words",
+      publicVoteResult,
+      vote: null,
+      speech: {
+        kind: "last_words",
+        eligibleSpeakerSeats: [resolution.exiledSeat],
+        speakingOrder: [resolution.exiledSeat],
+        submittedSpeakerSeats: [],
+        limit: 150,
+      },
+    },
+    bodies,
+  };
+};
+
+const applySpeechCommand = (
+  state: GameState,
+  command: Extract<GameCommand, { type: "submit_speech" }>,
+): { readonly state: GameState; readonly bodies: readonly EventBody[] } => {
+  const speech = state.speech!;
+  const submittedSpeakerSeats = [...speech.submittedSpeakerSeats, command.actorSeat];
+  let nextState: GameState = {
+    ...withCommandRecord(state, command.commandId),
+    speech: { ...speech, submittedSpeakerSeats },
+  };
+
+  const bodies: EventBody[] = [{
+    type: "speech_published",
+    seat: command.actorSeat,
+    content: command.content,
+    audience: { kind: "public" },
+  }];
+
+  if (submittedSpeakerSeats.length === speech.eligibleSpeakerSeats.length) {
+    if (state.phase === "day_pk_speech") {
+      nextState = { ...nextState, phase: "day_pk_vote", speech: null };
+      const resolution = resolveVoteRound(nextState);
+      if (resolution.kind !== "pending") {
+        return completeVoteRound(nextState, resolution, bodies);
+      }
+    } else if (state.phase === "day_speech") {
+      nextState = { ...nextState, phase: "day_vote", speech: null };
+    } else {
+      const exiledSeat = state.publicVoteResult?.exiledSeat;
+      nextState = {
+        ...nextState,
+        phase: "night_wolf_discussion",
+        players: exiledSeat === undefined
+          ? nextState.players
+          : nextState.players.map((player) => player.seat === exiledSeat
+            ? { ...player, alive: false }
+            : player),
+        speech: null,
+        vote: null,
+        night: resetNight(nextState),
+      };
+    }
+  }
+
+  return {
+    state: nextState,
+    bodies,
+  };
+};
+
+const applyVoteCommand = (
+  state: GameState,
+  command: Extract<GameCommand, { type: "submit_vote" | "pass_action" }>,
+): { readonly state: GameState; readonly bodies: readonly EventBody[] } => {
+  const vote = state.vote!;
+  const targetSeat = command.type === "submit_vote" ? command.targetSeat : null;
+  const recordedState: GameState = {
+    ...withCommandRecord(state, command.commandId),
+    vote: {
+      ...vote,
+      pendingBallots: [...vote.pendingBallots, { actorSeat: command.actorSeat, targetSeat }],
+    },
+  };
+  const bodies: EventBody[] = [{
+    type: "vote_accepted",
+    actorSeat: command.actorSeat,
+    targetSeat,
+    audience: { kind: "private", seat: command.actorSeat },
+  }];
+  const resolution = resolveVoteRound(recordedState);
+  if (resolution.kind === "pending") return { state: recordedState, bodies };
+  return completeVoteRound(recordedState, resolution, bodies);
+};
+
 export const applyCommand = (state: GameState, command: GameCommand): ApplyCommandResult => {
   if (state.processedCommandIds.includes(command.commandId)) {
     return { state, events: [] };
@@ -307,7 +550,11 @@ export const applyCommand = (state: GameState, command: GameCommand): ApplyComma
   if (reason !== undefined) return rejected(state, command, reason);
 
   let applied: { readonly state: GameState; readonly bodies: readonly EventBody[] };
-  if (state.phase === "night_wolf_discussion" || state.phase === "night_wolf_final_confirmation") {
+  if (isVotePhase(state)) {
+    applied = applyVoteCommand(state, command as Extract<GameCommand, { type: "submit_vote" | "pass_action" }>);
+  } else if (isSpeechPhase(state)) {
+    applied = applySpeechCommand(state, command as Extract<GameCommand, { type: "submit_speech" }>);
+  } else if (state.phase === "night_wolf_discussion" || state.phase === "night_wolf_final_confirmation") {
     applied = applyWolfCommand(state, command as Extract<GameCommand, { type: "submit_wolf_kill" | "pass_action" }>);
   } else if (state.phase === "night_seer_action") {
     applied = applySeerCommand(state, command as Extract<GameCommand, { type: "inspect_player" | "pass_action" }>);

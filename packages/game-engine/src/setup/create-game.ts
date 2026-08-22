@@ -88,6 +88,9 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
         submittedActorSeats: [],
         potionUsed: false,
       },
+      speech: null,
+      vote: null,
+      publicVoteResult: null,
     },
     events,
   };

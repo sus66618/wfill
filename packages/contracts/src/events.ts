@@ -46,6 +46,16 @@ const EventEnvelopeSchema = z.object({
   audience: EventAudienceSchema,
 });
 
+const VoteBallotSchema = z.object({
+  actorSeat: SeatIdSchema,
+  targetSeat: SeatIdSchema.nullable(),
+});
+
+const VoteTallyEntrySchema = z.object({
+  targetSeat: SeatIdSchema,
+  votes: z.number().int().min(0),
+});
+
 const RoleAssignedEventSchema = EventEnvelopeSchema.extend({
   type: z.literal("role_assigned"),
   seat: SeatIdSchema,
@@ -62,11 +72,54 @@ const RoleAssignedEventSchema = EventEnvelopeSchema.extend({
 });
 
 export const GameEventSchema = z.union([
-  EventEnvelopeSchema.extend({ type: z.literal("game_created") }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("game_created"),
+    audience: PublicEventAudienceSchema,
+  }),
   RoleAssignedEventSchema,
-  EventEnvelopeSchema.extend({ type: z.literal("phase_advanced"), phase: z.string().min(1) }),
-  EventEnvelopeSchema.extend({ type: z.literal("speech_published"), seat: SeatIdSchema, content: z.string().min(1) }),
-  EventEnvelopeSchema.extend({ type: z.literal("vote_accepted"), actorSeat: SeatIdSchema, targetSeat: SeatIdSchema }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("phase_advanced"),
+    phase: z.string().min(1),
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("speech_published"),
+    seat: SeatIdSchema,
+    content: z.string().min(1),
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("vote_accepted"),
+    actorSeat: SeatIdSchema,
+    targetSeat: SeatIdSchema.nullable(),
+    audience: PrivateEventAudienceSchema,
+  }).superRefine((event, context) => {
+    requireMatchingAudienceSeat(event.audience.seat, event.actorSeat, context);
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("vote_revealed"),
+    roundKind: z.enum(["exile", "pk"]),
+    roundVersion: z.number().int().min(0),
+    ballots: z.array(VoteBallotSchema),
+    tally: z.array(VoteTallyEntrySchema),
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("pk_round_opened"),
+    candidateSeats: z.array(SeatIdSchema),
+    eligibleVoterSeats: z.array(SeatIdSchema),
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("vote_tied_no_exile"),
+    tiedCandidateSeats: z.array(SeatIdSchema),
+    audience: PublicEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("exile_opened"),
+    exiledSeat: SeatIdSchema,
+    audience: PublicEventAudienceSchema,
+  }),
   EventEnvelopeSchema.extend({
     type: z.literal("action_rejected"),
     commandId: CommandIdSchema,
@@ -106,7 +159,11 @@ export const GameEventSchema = z.union([
     eliminatedSeats: z.array(SeatIdSchema),
     audience: PublicEventAudienceSchema,
   }),
-  EventEnvelopeSchema.extend({ type: z.literal("game_finished"), winner: z.string().min(1) }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("game_finished"),
+    winner: z.string().min(1),
+    audience: PublicEventAudienceSchema,
+  }),
 ]);
 
 export type GameEvent = z.infer<typeof GameEventSchema>;

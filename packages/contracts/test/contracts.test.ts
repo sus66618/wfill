@@ -64,4 +64,28 @@ describe("runtime contracts", () => {
     expect(filterEventsForAudience(events, { kind: "private", seat: 3 }))
       .toEqual(events);
   });
+
+  it("rejects a public role assignment", () => {
+    expect(GameEventSchema.safeParse({
+      eventId: "event-2",
+      gameId: "game-1",
+      version: 2,
+      type: "role_assigned",
+      seat: 3,
+      role: "seer",
+      audience: { kind: "public" },
+    }).success).toBe(false);
+  });
+
+  it("rejects a role assignment addressed to a different seat", () => {
+    expect(GameEventSchema.safeParse({
+      eventId: "event-2",
+      gameId: "game-1",
+      version: 2,
+      type: "role_assigned",
+      seat: 3,
+      role: "seer",
+      audience: { kind: "private", seat: 4 },
+    }).success).toBe(false);
+  });
 });

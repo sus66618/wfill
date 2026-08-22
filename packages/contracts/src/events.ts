@@ -8,6 +8,11 @@ export const EventAudienceSchema = z.discriminatedUnion("kind", [
 
 export type EventAudience = z.infer<typeof EventAudienceSchema>;
 
+const PrivateEventAudienceSchema = z.object({
+  kind: z.literal("private"),
+  seat: SeatIdSchema,
+});
+
 const EventEnvelopeSchema = z.object({
   eventId: EventIdSchema,
   gameId: GameIdSchema,
@@ -15,9 +20,24 @@ const EventEnvelopeSchema = z.object({
   audience: EventAudienceSchema,
 });
 
-export const GameEventSchema = z.discriminatedUnion("type", [
+const RoleAssignedEventSchema = EventEnvelopeSchema.extend({
+  type: z.literal("role_assigned"),
+  seat: SeatIdSchema,
+  role: z.string().min(1),
+  audience: PrivateEventAudienceSchema,
+}).superRefine((event, context) => {
+  if (event.audience.seat !== event.seat) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["audience", "seat"],
+      message: "role_assignment_audience_must_match_seat",
+    });
+  }
+});
+
+export const GameEventSchema = z.union([
   EventEnvelopeSchema.extend({ type: z.literal("game_created") }),
-  EventEnvelopeSchema.extend({ type: z.literal("role_assigned"), seat: SeatIdSchema, role: z.string().min(1) }),
+  RoleAssignedEventSchema,
   EventEnvelopeSchema.extend({ type: z.literal("phase_advanced"), phase: z.string().min(1) }),
   EventEnvelopeSchema.extend({ type: z.literal("speech_published"), seat: SeatIdSchema, content: z.string().min(1) }),
   EventEnvelopeSchema.extend({ type: z.literal("vote_accepted"), actorSeat: SeatIdSchema, targetSeat: SeatIdSchema }),

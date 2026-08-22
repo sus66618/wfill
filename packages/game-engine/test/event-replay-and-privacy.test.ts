@@ -77,6 +77,68 @@ describe("event replay and privacy", () => {
       .toThrow("invalid_audit_journal:game_mismatch");
     expect(() => restore(auditEvents, domainEvents.slice(1)))
       .toThrow("invalid_audit_journal:domain_version_gap");
+    const firstCommit = auditEvents[0] as Extract<GameEvent, { type: "command_committed" }>;
+    const firstSnapshot = firstCommit.state as unknown as ReturnType<typeof createGame>["state"];
+    expect(() => restore([{
+      ...firstCommit,
+      state: { ...firstSnapshot, processedCommandIds: [...firstSnapshot.processedCommandIds, "forged-id"] },
+    }, auditEvents[1]!])).toThrow("invalid_audit_journal:snapshot_processed_commands_mismatch");
+    expect(() => restore([{
+      ...firstCommit,
+      state: { ...firstSnapshot, processedCommandIds: [] },
+    }, auditEvents[1]!])).toThrow("invalid_audit_journal:snapshot_processed_commands_mismatch");
+  });
+
+  it("restores accepted and rejected commands with exact processed-ID history", () => {
+    const created = createGame({ gameId: "mixed-journal", ruleset: SIX_PLAYER_RULESET, seed: "mixed-seed" });
+    const wolves = created.state.players.filter((player) => player.roleId === "werewolf");
+    const target = created.state.players.find((player) => player.roleId !== "werewolf")!;
+    let state = created.state;
+    const domainEvents: GameEvent[] = [];
+    const auditEvents: GameEvent[] = [];
+    const apply = (command: GameCommand) => {
+      const result = applyCommand(state, command);
+      state = result.state;
+      domainEvents.push(...result.events);
+      auditEvents.push(...(result.auditEvents ?? []));
+    };
+
+    apply({
+      commandId: "mixed-accepted-1" as CommandId,
+      gameId: state.gameId,
+      expectedVersion: state.version,
+      actorSeat: wolves[0]!.seat,
+      type: "submit_wolf_kill",
+      targetSeat: target.seat,
+    });
+    const rejectedCommand: GameCommand = {
+      commandId: "mixed-rejected" as CommandId,
+      gameId: state.gameId,
+      expectedVersion: state.version,
+      actorSeat: target.seat,
+      type: "submit_speech",
+      content: "夜间非法发言。",
+    };
+    apply(rejectedCommand);
+    apply({
+      commandId: "mixed-accepted-2" as CommandId,
+      gameId: state.gameId,
+      expectedVersion: state.version,
+      actorSeat: wolves[1]!.seat,
+      type: "submit_wolf_kill",
+      targetSeat: target.seat,
+    });
+
+    const restored = restoreFromAuditJournal(created.state, { domainEvents, auditEvents });
+    expect(restored).toEqual(state);
+    expect(restored.processedCommandIds).toEqual([
+      "mixed-accepted-1",
+      "mixed-rejected",
+      "mixed-accepted-2",
+    ]);
+    expect(applyCommand(restored, rejectedCommand)).toEqual({ state: restored, events: [] });
+    expect(domainEvents.find((event) => event.type === "action_rejected")?.audience)
+      .toEqual({ kind: "private", seat: target.seat });
   });
 
   it("shows a death without cause publicly and reveals cause only in god projection", () => {

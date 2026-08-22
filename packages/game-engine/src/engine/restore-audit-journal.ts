@@ -19,18 +19,15 @@ export const restoreFromAuditJournal = (
   initialState: GameState,
   journal: AuditJournal,
 ): GameState => {
-  if (journal.domainEvents.some((event) => event.type === "action_rejected")) {
-    fail("rejected_event_not_supported");
-  }
-  const acceptedEvents = journal.domainEvents.filter((event) => event.type !== "action_rejected");
-  if (acceptedEvents.length > 0 && journal.auditEvents.length === 0) fail("missing_commits");
+  const processedEvents = journal.domainEvents;
+  if (processedEvents.length > 0 && journal.auditEvents.length === 0) fail("missing_commits");
 
   let expectedEventVersion = initialState.version + 1;
   const lastVersionByCommand = new Map<CommandId, number>();
   const commandOrder: CommandId[] = [];
   const closedCommands = new Set<CommandId>();
   let activeCommandId: CommandId | undefined;
-  for (const event of acceptedEvents) {
+  for (const event of processedEvents) {
     if (event.gameId !== initialState.gameId) fail("game_mismatch");
     if (event.rulesetId !== initialState.rulesetId || event.rulesetVersion !== initialState.rulesetVersion) {
       fail("ruleset_mismatch");
@@ -75,10 +72,14 @@ export const restoreFromAuditJournal = (
       || snapshot.rulesetVersion !== initialState.rulesetVersion
     ) fail("snapshot_identity_mismatch");
     if (snapshot.version !== commit.version) fail("snapshot_version_mismatch");
-    if (!snapshot.processedCommandIds.includes(commandId)) fail("snapshot_missing_command");
-    if ([...committed].some((processedId) => !snapshot.processedCommandIds.includes(processedId))) {
-      fail("snapshot_missing_command");
-    }
+    const expectedProcessedIds = [
+      ...initialState.processedCommandIds,
+      ...commandOrder.slice(0, index + 1),
+    ];
+    if (
+      snapshot.processedCommandIds.length !== expectedProcessedIds.length
+      || snapshot.processedCommandIds.some((id, idIndex) => id !== expectedProcessedIds[idIndex])
+    ) fail("snapshot_processed_commands_mismatch");
     state = snapshot;
   }
 

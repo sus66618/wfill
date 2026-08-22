@@ -198,12 +198,23 @@ const rejected = (state: GameState, command: GameCommand, reason: string): Apply
     actorSeat: command.actorSeat,
     audience: { kind: "private", seat: command.actorSeat },
   }, command.commandId);
+  const rejectedState: GameState = {
+    ...withCommandRecord(state, command.commandId),
+    version: event.version,
+  };
+  const auditEvent = {
+    ...makeEvent(state, 1, {
+      type: "command_committed",
+      commandId: command.commandId,
+      state: rejectedState as unknown as Record<string, unknown>,
+      audience: { kind: "god" },
+    }, command.commandId),
+    eventId: `${state.gameId}:${event.version}:audit` as EventId,
+  } as GameEvent;
   return {
-    state: {
-      ...withCommandRecord(state, command.commandId),
-      version: event.version,
-    },
+    state: rejectedState,
     events: [event],
+    auditEvents: [auditEvent],
   };
 };
 

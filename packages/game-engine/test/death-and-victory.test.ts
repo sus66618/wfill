@@ -328,6 +328,32 @@ describe("death settlement and victory", () => {
     expect(result.events[1]).toMatchObject({ cause: "exile", audience: { kind: "public" } });
   });
 
+  it("accepts day-exile last words from the current eligible dead speaker", () => {
+    const players = makeState().players.map((entry) => entry.seat === seat(3)
+      ? { ...entry, alive: false }
+      : entry);
+    const state: GameState = {
+      ...makeState("day_exile_last_words", players),
+      pendingExileSeat: seat(3),
+      speech: {
+        kind: "last_words",
+        eligibleSpeakerSeats: [seat(3)],
+        speakingOrder: [seat(3)],
+        submittedSpeakerSeats: [],
+        limit: 150,
+      },
+    };
+
+    const result = runCommand(state, {
+      type: "submit_speech",
+      actorSeat: seat(3),
+      content: "当前遗言有效。",
+    });
+
+    expect(result.events[0]).toMatchObject({ type: "speech_published", seat: seat(3) });
+    expect(result.state.phase).toBe("night_wolf_discussion");
+  });
+
   it("opens first-night last words for eliminated players and accepts their dead-actor speech", () => {
     let state = makeState("night_wolf_discussion", [
       player(1, "werewolf"),

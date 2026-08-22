@@ -45,6 +45,17 @@ const makeState = (): GameState => ({
   },
 });
 
+let flowCommandIndex = 0;
+const runFlowCommand = (
+  state: GameState,
+  input: Omit<GameCommand, "commandId" | "gameId" | "expectedVersion">,
+) => applyCommand(state, {
+  ...input,
+  commandId: `invariant-flow-${flowCommandIndex += 1}` as CommandId,
+  gameId: state.gameId,
+  expectedVersion: state.version,
+} as GameCommand);
+
 describe("game state invariants", () => {
   it("rejects a state with duplicate seat numbers", () => {
     const state = makeState();
@@ -66,6 +77,14 @@ describe("game state invariants", () => {
     })).toThrow("exact_six_seats");
   });
 
+  it("rejects a ruleset that declares five players with a six-role roster", () => {
+    expect(() => createGame({
+      gameId: "wrong-declared-count",
+      ruleset: { ...SIX_PLAYER_RULESET, playerCount: 5 },
+      seed: "wrong-declared-count-seed",
+    })).toThrow("exact_six_seats");
+  });
+
   it.each([
     ["invalid_version", { version: -1 }],
     ["invalid_phase", { phase: "coffee_break" }],
@@ -80,6 +99,20 @@ describe("game state invariants", () => {
     expect(() => assertGameState(state, state.version)).toThrow("non_monotonic_version");
   });
 
+  it.each([-1, 1.5, 11])("rejects invalid vote round version %s", (roundVersion) => {
+    expect(() => assertGameState({
+      ...makeState(),
+      phase: "day_vote",
+      vote: {
+        kind: "exile",
+        roundVersion,
+        eligibleVoterSeats: [seat(1), seat(2), seat(3), seat(4), seat(5), seat(6)],
+        candidateSeats: [seat(1), seat(2), seat(3), seat(4), seat(5), seat(6)],
+        pendingBallots: [],
+      },
+    })).toThrow("invalid_vote_round_version");
+  });
+
   it("rejects dead night actors", () => {
     const state = makeState();
     const players = state.players.map((entry) => entry.seat === seat(5)
@@ -91,6 +124,82 @@ describe("game state invariants", () => {
       players,
       night: { ...state.night, submittedActorSeats: [seat(5)] },
     })).toThrow("dead_actor");
+  });
+
+  it("accepts a real night transition after the witch is killed", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      dayNumber: 0,
+      phase: "night_witch_action",
+      pendingEffects: [{ type: "wolf_kill", targetSeat: seat(4) }],
+      night: {
+        ...base.night,
+        wolfSubmissions: [
+          { actorSeat: seat(1), targetSeat: seat(4) },
+          { actorSeat: seat(2), targetSeat: seat(4) },
+        ],
+        wolfTargetSeat: seat(4),
+      },
+    };
+
+    const result = runFlowCommand(state, { type: "pass_action", actorSeat: seat(4) });
+
+    expect(result.state.phase).toBe("dawn_last_words");
+    expect(result.state.players.find((entry) => entry.seat === seat(4))?.alive).toBe(false);
+  });
+
+  it("accepts a real night transition after a historical wolf actor is poisoned", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      dayNumber: 0,
+      phase: "night_witch_action",
+      pendingEffects: [{ type: "wolf_kill", targetSeat: seat(6) }],
+      night: {
+        ...base.night,
+        wolfSubmissions: [
+          { actorSeat: seat(1), targetSeat: seat(6) },
+          { actorSeat: seat(2), targetSeat: seat(6) },
+        ],
+        wolfTargetSeat: seat(6),
+      },
+    };
+
+    const result = runFlowCommand(state, {
+      type: "use_poison",
+      actorSeat: seat(4),
+      targetSeat: seat(1),
+    });
+
+    expect(result.state.phase).toBe("dawn_last_words");
+    expect(result.state.players.find((entry) => entry.seat === seat(1))?.alive).toBe(false);
+  });
+
+  it("accepts a later self-destruct despite historical night submissions", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      phase: "day_speech",
+      selfDestructEnabled: true,
+      night: {
+        ...base.night,
+        wolfSubmissions: [{ actorSeat: seat(1), targetSeat: seat(3) }],
+        submittedActorSeats: [seat(1)],
+      },
+      speech: {
+        kind: "ordinary",
+        eligibleSpeakerSeats: [seat(1), seat(2), seat(3), seat(4), seat(5), seat(6)],
+        speakingOrder: [seat(1), seat(2), seat(3), seat(4), seat(5), seat(6)],
+        submittedSpeakerSeats: [],
+        limit: 220,
+      },
+    };
+
+    const result = runFlowCommand(state, { type: "self_destruct", actorSeat: seat(1) });
+
+    expect(result.state.phase).toBe("day_self_destruct_last_words");
+    expect(result.state.players.find((entry) => entry.seat === seat(1))?.alive).toBe(false);
   });
 
   it("rejects duplicate processed command IDs", () => {

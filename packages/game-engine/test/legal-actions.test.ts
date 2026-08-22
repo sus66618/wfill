@@ -128,6 +128,34 @@ describe("legal action snapshots", () => {
     expect(getLegalActions(state, seat(4))).toEqual([]);
   });
 
+  it.each([
+    "dawn_last_words",
+    "day_self_destruct_last_words",
+    "day_exile_last_words",
+  ] as const)("offers the current dead speaker last words during %s", (phase) => {
+    const deadPlayers = players().map((entry) => entry.seat === seat(3)
+      ? { ...entry, alive: false }
+      : entry);
+    const state = makeState(phase, {
+      players: deadPlayers,
+      speech: {
+        kind: "last_words",
+        eligibleSpeakerSeats: [seat(3)],
+        speakingOrder: [seat(3)],
+        submittedSpeakerSeats: [],
+        limit: 150,
+      },
+    });
+
+    expect(getLegalActions(state, seat(3))).toEqual([{
+      type: "submit_speech",
+      targetRequired: false,
+      targetSeats: [],
+      passAllowed: false,
+      speechLimit: 150,
+    }]);
+  });
+
   it("describes vote targets and pass support without offering dead candidates", () => {
     const votePlayers = players().map((entry) => entry.seat === seat(6)
       ? { ...entry, alive: false }
@@ -147,7 +175,7 @@ describe("legal action snapshots", () => {
       {
         type: "submit_vote",
         targetRequired: true,
-        targetSeats: [seat(1), seat(2), seat(3), seat(4), seat(5)],
+        targetSeats: [seat(1), seat(2), seat(4), seat(5)],
         passAllowed: true,
         speechLimit: null,
       },
@@ -159,6 +187,30 @@ describe("legal action snapshots", () => {
         speechLimit: null,
       },
     ]);
+  });
+
+  it("offers only pass when every vote candidate is self or dead", () => {
+    const votePlayers = players().map((entry) => entry.seat === seat(6)
+      ? { ...entry, alive: false }
+      : entry);
+    const state = makeState("day_vote", {
+      players: votePlayers,
+      vote: {
+        kind: "exile",
+        roundVersion: 10,
+        eligibleVoterSeats: [seat(3)],
+        candidateSeats: [seat(3), seat(6)],
+        pendingBallots: [],
+      },
+    });
+
+    expect(getLegalActions(state, seat(3))).toEqual([{
+      type: "pass_action",
+      targetRequired: false,
+      targetSeats: [],
+      passAllowed: true,
+      speechLimit: null,
+    }]);
   });
 
   it("offers a live wolf self-destruct only during the enabled day speech window", () => {

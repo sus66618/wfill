@@ -202,6 +202,30 @@ describe("day voting", () => {
     expect(illegalTarget.state.vote?.pendingBallots).toEqual([]);
   });
 
+  it("rejects self-votes and dead targets through the same legal-target contract", () => {
+    const state = openVoteState();
+    const selfVote = runCommand(state, {
+      type: "submit_vote",
+      actorSeat: seat(2),
+      targetSeat: seat(2),
+    });
+    const deadTarget = runCommand({
+      ...state,
+      players: state.players.map((entry) => entry.seat === seat(3)
+        ? { ...entry, alive: false }
+        : entry),
+    }, {
+      type: "submit_vote",
+      actorSeat: seat(1),
+      targetSeat: seat(3),
+    });
+
+    expect(selfVote.events[0]).toMatchObject({ type: "action_rejected", reason: "illegal_target" });
+    expect(deadTarget.events[0]).toMatchObject({ type: "action_rejected", reason: "illegal_target" });
+    expect(selfVote.state.vote?.pendingBallots).toEqual([]);
+    expect(deadTarget.state.vote?.pendingBallots).toEqual([]);
+  });
+
   it("opens a PK round on first tie with only tied speakers and non-tied voters", () => {
     const result = finishFirstTie();
 
@@ -339,7 +363,7 @@ describe("day voting", () => {
         pendingBallots: [
           { actorSeat: seat(1), targetSeat: seat(2) },
           { actorSeat: seat(1), targetSeat: seat(3) },
-          { actorSeat: seat(2), targetSeat: seat(2) },
+          { actorSeat: seat(2), targetSeat: seat(3) },
         ],
       },
     });
@@ -384,8 +408,8 @@ describe("day voting", () => {
     };
     const roundVersion = state.vote!.roundVersion;
     state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(1), targetSeat: seat(2) }, roundVersion).state;
-    state = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(2), targetSeat: seat(2) }, roundVersion).state;
-    const result = runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(3) }, roundVersion);
+    state = runCommandAtVersion(state, { type: "pass_action", actorSeat: seat(2) }, roundVersion).state;
+    const result = runCommandAtVersion(state, { type: "submit_vote", actorSeat: seat(3), targetSeat: seat(2) }, roundVersion);
 
     expect(result.state.phase).toBe("day_exile_last_words");
     expect(result.state.pendingExileSeat).toBe(seat(2));

@@ -31,6 +31,9 @@ const eventIdFor = (gameId: GameId, version: number): EventId =>
   `${gameId}:${version}` as EventId;
 
 export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGameResult => {
+  if (ruleset.playerCount !== 6 || ruleset.roster.length !== 6) {
+    throw new Error("exact_six_seats");
+  }
   const typedGameId = gameId as GameId;
   const rolesBySeat = shuffle(ruleset.roster, seed);
   const assignedPlayers = rolesBySeat.map((roleId, index) => ({

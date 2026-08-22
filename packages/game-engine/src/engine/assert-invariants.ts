@@ -48,15 +48,30 @@ const actorFor = (players: readonly PlayerState[], actorSeat: SeatId): PlayerSta
 };
 
 const assertLivingActors = (state: GameState): void => {
-  const actorSeats: SeatId[] = [
-    ...state.night.submittedActorSeats,
-    ...state.night.wolfSubmissions.map((submission) => submission.actorSeat),
-    ...(state.vote?.pendingBallots.map((ballot) => ballot.actorSeat) ?? []),
-    ...state.pendingEffects.flatMap((effect) => "actorSeat" in effect ? [effect.actorSeat] : []),
-    ...(state.speech !== undefined && state.speech !== null && state.speech.kind !== "last_words"
-      ? state.speech.submittedSpeakerSeats
-      : []),
-  ];
+  const actorSeats: SeatId[] = [];
+  if (state.phase === "night_wolf_discussion" || state.phase === "night_wolf_final_confirmation") {
+    actorSeats.push(
+      ...state.night.submittedActorSeats,
+      ...state.night.wolfSubmissions.map((submission) => submission.actorSeat),
+    );
+  } else if (state.phase === "night_seer_action" || state.phase === "night_witch_action") {
+    actorSeats.push(...state.night.submittedActorSeats);
+  }
+  if (state.phase.startsWith("night_")) {
+    actorSeats.push(
+      ...state.pendingEffects.flatMap((effect) => "actorSeat" in effect ? [effect.actorSeat] : []),
+    );
+  }
+  if (state.phase === "day_vote" || state.phase === "day_pk_vote") {
+    actorSeats.push(...(state.vote?.pendingBallots.map((ballot) => ballot.actorSeat) ?? []));
+  }
+  if (
+    state.speech !== undefined
+    && state.speech !== null
+    && state.speech.kind !== "last_words"
+  ) {
+    actorSeats.push(...state.speech.submittedSpeakerSeats);
+  }
 
   for (const actorSeat of actorSeats) {
     if (!actorFor(state.players, actorSeat).alive) invariantFailure("dead_actor");
@@ -77,6 +92,17 @@ export const assertGameState = (state: GameState, previousVersion?: number): voi
     invariantFailure("non_monotonic_version");
   }
   if (!VALID_PHASES.has(state.phase)) invariantFailure("invalid_phase");
+  if (
+    state.vote !== undefined
+    && state.vote !== null
+    && (
+      !Number.isInteger(state.vote.roundVersion)
+      || state.vote.roundVersion < 0
+      || state.vote.roundVersion > state.version
+    )
+  ) {
+    invariantFailure("invalid_vote_round_version");
+  }
 
   assertNonnegativeResources(state);
   assertLivingActors(state);

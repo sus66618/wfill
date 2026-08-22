@@ -83,6 +83,27 @@ const speechActions = (state: GameState, actor: PlayerState): LegalAction[] => {
   return actions;
 };
 
+const isCurrentLastWordsSpeaker = (state: GameState, actorSeat: SeatId): boolean => {
+  if (
+    state.phase !== "dawn_last_words"
+    && state.phase !== "day_exile_last_words"
+    && state.phase !== "day_self_destruct_last_words"
+  ) return false;
+
+  const speech = state.speech;
+  if (speech === undefined || speech === null || speech.kind !== "last_words") return false;
+  return speech.eligibleSpeakerSeats.includes(actorSeat)
+    && speech.speakingOrder.find((seat) => !speech.submittedSpeakerSeats.includes(seat)) === actorSeat;
+};
+
+export const isLegalVoteTarget = (
+  state: GameState,
+  actorSeat: SeatId,
+  targetSeat: SeatId,
+): boolean => actorSeat !== targetSeat
+  && state.vote?.candidateSeats.includes(targetSeat) === true
+  && state.players.some((player) => player.seat === targetSeat && player.alive);
+
 const voteActions = (state: GameState, actor: PlayerState): LegalAction[] => {
   const vote = state.vote;
   if (
@@ -94,15 +115,16 @@ const voteActions = (state: GameState, actor: PlayerState): LegalAction[] => {
     return [];
   }
 
-  const targetSeats = state.players
-    .filter((player) => player.alive && vote.candidateSeats.includes(player.seat))
-    .map((player) => player.seat);
-  return [action("submit_vote", targetSeats, true), passAction()];
+  const targetSeats = vote.candidateSeats
+    .filter((targetSeat) => isLegalVoteTarget(state, actor.seat, targetSeat));
+  return targetSeats.length > 0
+    ? [action("submit_vote", targetSeats, true), passAction()]
+    : [passAction()];
 };
 
 export const getLegalActions = (state: GameState, actorSeat: SeatId): LegalAction[] => {
   const actor = state.players.find((player) => player.seat === actorSeat);
-  if (actor === undefined || !actor.alive) return [];
+  if (actor === undefined || (!actor.alive && !isCurrentLastWordsSpeaker(state, actorSeat))) return [];
 
   if (state.phase === "night_wolf_discussion" || state.phase === "night_wolf_final_confirmation") {
     if (actor.roleId !== "werewolf" || hasSubmittedNightAction(state, actorSeat)) return [];

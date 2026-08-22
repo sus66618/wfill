@@ -6,7 +6,7 @@ import type {
   SeatId,
 } from "@wfill/contracts";
 import { assertGameState } from "./assert-invariants.js";
-import { legalActionForCommand } from "./legal-actions.js";
+import { isLegalVoteTarget, legalActionForCommand } from "./legal-actions.js";
 import {
   lastWordsEligibility,
   resolveDeaths,
@@ -73,7 +73,7 @@ const dayRejectionReason = (state: GameState, command: GameCommand): string | un
     if (vote.pendingBallots.some((ballot) => ballot.actorSeat === command.actorSeat)) {
       return "actor_already_submitted";
     }
-    if (command.type === "submit_vote" && !vote.candidateSeats.includes(command.targetSeat)) {
+    if (command.type === "submit_vote" && !isLegalVoteTarget(state, command.actorSeat, command.targetSeat)) {
       return "illegal_target";
     }
     return undefined;
@@ -117,7 +117,11 @@ const rejectionReason = (state: GameState, command: GameCommand): string | undef
     return "action_window_closed";
   }
   const isEligibleDeadLastWords = command.type === "submit_speech"
-    && (state.phase === "dawn_last_words" || state.phase === "day_self_destruct_last_words")
+    && (
+      state.phase === "dawn_last_words"
+      || state.phase === "day_exile_last_words"
+      || state.phase === "day_self_destruct_last_words"
+    )
     && state.speech?.eligibleSpeakerSeats.includes(command.actorSeat) === true;
   if (!actor.alive && !isEligibleDeadLastWords) return "actor_not_alive";
 

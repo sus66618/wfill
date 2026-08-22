@@ -1,6 +1,7 @@
 import type { EventId, GameEvent, GameId, SeatId } from "@wfill/contracts";
 import type { RulesetDefinition } from "@wfill/rules-core";
 import type { GameState, PlayerState } from "../state/game-state.js";
+import { assertGameState } from "../engine/assert-invariants.js";
 import { createSeededRandom } from "./seeded-random.js";
 
 export interface CreateGameInput {
@@ -72,7 +73,7 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
     });
   }
 
-  return {
+  const result: CreateGameResult = {
     state: {
       gameId: typedGameId,
       rulesetId: ruleset.id,
@@ -101,4 +102,6 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
     },
     events,
   };
+  assertGameState(result.state);
+  return result;
 };

@@ -4,6 +4,7 @@ export { applyCommand } from "./engine/apply-command.js";
 export type { ApplyCommandResult } from "./engine/apply-command.js";
 export { getLegalActions } from "./engine/legal-actions.js";
 export type { LegalAction } from "./engine/legal-actions.js";
+export { assertGameState } from "./engine/assert-invariants.js";
 export { resolveNight } from "./engine/night-resolution.js";
 export type { NightResolutionResult } from "./engine/night-resolution.js";
 export { lastWordsEligibility, resolveDeaths } from "./engine/death-resolution.js";

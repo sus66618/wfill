@@ -5,6 +5,7 @@ import type {
   GameEvent,
   SeatId,
 } from "@wfill/contracts";
+import { assertGameState } from "./assert-invariants.js";
 import { legalActionForCommand } from "./legal-actions.js";
 import {
   lastWordsEligibility,
@@ -813,11 +814,13 @@ export const applyCommand = (state: GameState, command: GameCommand): ApplyComma
   }
 
   const events = applied.bodies.map((body, index) => makeEvent(state, index + 1, body));
-  return {
+  const result: ApplyCommandResult = {
     state: {
       ...applied.state,
       version: events.at(-1)?.version ?? state.version,
     },
     events,
   };
+  assertGameState(result.state, state.version);
+  return result;
 };

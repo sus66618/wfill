@@ -147,8 +147,20 @@ describe("command validation", () => {
 
     expect(getLegalActions(state, seat(3))).toEqual([]);
     expect(getLegalActions(state, seat(5))).toEqual([
-      { type: "inspect_player", targetSeats: [seat(1), seat(2), seat(3), seat(4), seat(6)] },
-      { type: "pass_action" },
+      {
+        type: "inspect_player",
+        targetRequired: true,
+        targetSeats: [seat(1), seat(2), seat(3), seat(4), seat(6)],
+        passAllowed: true,
+        speechLimit: null,
+      },
+      {
+        type: "pass_action",
+        targetRequired: false,
+        targetSeats: [],
+        passAllowed: true,
+        speechLimit: null,
+      },
     ]);
   });
 

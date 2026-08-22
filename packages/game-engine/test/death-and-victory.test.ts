@@ -253,6 +253,9 @@ describe("death settlement and victory", () => {
       player(1, "werewolf"),
       player(2, "werewolf", false),
       player(3, "villager"),
+      player(4, "witch"),
+      player(5, "seer"),
+      player(6, "villager"),
     ]);
     const result = runCommand(state, { type: "self_destruct", actorSeat: seat(1) });
 
@@ -292,6 +295,9 @@ describe("death settlement and victory", () => {
       player(1, "werewolf"),
       player(2, "werewolf", false),
       player(3, "villager"),
+      player(4, "witch"),
+      player(5, "seer"),
+      player(6, "villager"),
     ];
     const state: GameState = {
       ...makeState("day_exile_last_words", players),

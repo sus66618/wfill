@@ -77,15 +77,17 @@ export const resolveDeaths = (
     }
   }
 
-  const eliminations = [...causeBySeat].map(([eliminatedSeat, cause]) => {
-    const deathPhase = phaseFor(cause);
-    return {
-      seat: eliminatedSeat,
-      cause,
-      deathPhase,
-      dayNumber: deathPhase === "night" ? (state.dayNumber ?? 0) + 1 : (state.dayNumber ?? 0),
-    };
-  });
+  const eliminations = [...causeBySeat]
+    .map(([eliminatedSeat, cause]) => {
+      const deathPhase = phaseFor(cause);
+      return {
+        seat: eliminatedSeat,
+        cause,
+        deathPhase,
+        dayNumber: deathPhase === "night" ? (state.dayNumber ?? 0) + 1 : (state.dayNumber ?? 0),
+      };
+    })
+    .sort((left, right) => left.seat - right.seat);
   const eliminatedSeats = new Set(eliminations.map((elimination) => elimination.seat));
 
   return {

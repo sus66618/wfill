@@ -23,6 +23,9 @@ const player = (seatNumber: number, roleId: string, alive = true): PlayerState =
   alive,
   privateState: {
     wolfTeammateSeats: roleId === "werewolf" ? [seat(seatNumber === 1 ? 2 : 1)] : [],
+    ...(roleId === "witch"
+      ? { witchResources: { antidoteAvailable: true, poisonAvailable: true } }
+      : {}),
   },
 });
 
@@ -128,6 +131,29 @@ describe("death settlement and victory", () => {
       dayNumber: 2,
     }]);
     expect(resolution.state.players.find((entry) => entry.seat === seat(3))?.alive).toBe(false);
+  });
+
+  it("sorts a reversed night death batch once for state, events, and first-night last words", () => {
+    const base = makeState("night_witch_action");
+    const state: GameState = {
+      ...base,
+      dayNumber: 0,
+      speech: null,
+      pendingEffects: [{ type: "wolf_kill", targetSeat: seat(6) }],
+      night: { ...base.night, wolfTargetSeat: seat(6) },
+    };
+    const result = runCommand(state, {
+      type: "use_poison",
+      actorSeat: seat(4),
+      targetSeat: seat(3),
+    });
+
+    expect(result.state.lastNightEliminatedSeats).toEqual([seat(3), seat(6)]);
+    expect(result.events
+      .filter((event) => event.type === "player_eliminated")
+      .map((event) => event.seat)).toEqual([seat(3), seat(6)]);
+    expect(result.state.phase).toBe("dawn_last_words");
+    expect(result.state.speech?.speakingOrder).toEqual([seat(3), seat(6)]);
   });
 
   it.each([

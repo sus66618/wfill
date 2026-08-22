@@ -80,6 +80,14 @@ export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGa
       version: events.length,
       phase: "night_wolf_discussion",
       players,
+      pendingEffects: [],
+      processedCommandIds: [],
+      night: {
+        wolfConfirmationRound: 1,
+        wolfSubmissions: [],
+        submittedActorSeats: [],
+        potionUsed: false,
+      },
     },
     events,
   };

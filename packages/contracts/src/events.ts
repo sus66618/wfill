@@ -13,6 +13,14 @@ const PrivateEventAudienceSchema = z.object({
   seat: SeatIdSchema,
 });
 
+const NightActionSchema = z.enum([
+  "submit_wolf_kill",
+  "inspect_player",
+  "use_antidote",
+  "use_poison",
+  "pass_action",
+]);
+
 const EventEnvelopeSchema = z.object({
   eventId: EventIdSchema,
   gameId: GameIdSchema,
@@ -42,6 +50,28 @@ export const GameEventSchema = z.union([
   EventEnvelopeSchema.extend({ type: z.literal("speech_published"), seat: SeatIdSchema, content: z.string().min(1) }),
   EventEnvelopeSchema.extend({ type: z.literal("vote_accepted"), actorSeat: SeatIdSchema, targetSeat: SeatIdSchema }),
   EventEnvelopeSchema.extend({ type: z.literal("action_rejected"), commandId: CommandIdSchema, reason: z.string().min(1) }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("night_action_recorded"),
+    actorSeat: SeatIdSchema,
+    action: NightActionSchema,
+    audience: PrivateEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("wolf_decision"),
+    targetSeat: SeatIdSchema.nullable(),
+    audience: PrivateEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("inspection_result"),
+    actorSeat: SeatIdSchema,
+    targetSeat: SeatIdSchema,
+    faction: z.enum(["good", "werewolf"]),
+    audience: PrivateEventAudienceSchema,
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("night_resolved"),
+    eliminatedSeats: z.array(SeatIdSchema),
+  }),
   EventEnvelopeSchema.extend({ type: z.literal("game_finished"), winner: z.string().min(1) }),
 ]);
 

@@ -151,6 +151,13 @@ export class SqliteSessionRepository implements SessionRepository {
     return rows.map((row) => this.load(String(row.game_id) as GameId)).filter((session): session is StoredSession => session !== null);
   }
 
+  lastUpdateSequence(gameId: GameId): number {
+    const row = this.database.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_updates WHERE game_id = ?
+    `).get(gameId);
+    return Number(row?.sequence ?? 0);
+  }
+
   close(): void {
     this.database.close();
   }

@@ -22,6 +22,7 @@ export interface SessionRepository {
   appendTransition(transition: SessionTransition): void;
   load(gameId: GameId): StoredSession | null;
   list(): readonly StoredSession[];
+  lastUpdateSequence(gameId: GameId): number;
   close(): void;
 }
 

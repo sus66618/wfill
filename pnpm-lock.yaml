@@ -26,6 +26,9 @@ importers:
       '@wfill/game-engine':
         specifier: workspace:*
         version: link:../game-engine
+      '@wfill/rules-core':
+        specifier: workspace:*
+        version: link:../rules-core
 
   packages/contracts:
     dependencies:

@@ -7,7 +7,9 @@ const targetFor = (decision: PlayerDecision): SeatId | undefined => "targetSeat"
 
 const assertLegalDecision = (decision: PlayerDecision, request: PlayerRequest): void => {
   const legal = request.legalActions.find((action) => action.type === decision.type);
-  if (!legal) throw new Error("scripted_action_not_legal");
+  if (!legal) {
+    throw new Error(`scripted_action_not_legal:${request.actorSeat}:${request.taskKind}:${decision.type}:${request.legalActions.map((action) => action.type).join(",")}`);
+  }
   const target = targetFor(decision);
   if (legal.targetRequired && target === undefined) throw new Error("scripted_target_required");
   if (target !== undefined && !legal.targetSeats.includes(target)) throw new Error("scripted_target_not_legal");

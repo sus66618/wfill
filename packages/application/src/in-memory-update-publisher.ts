@@ -8,7 +8,6 @@ interface Subscription {
   readonly mode: SpectatorMode;
   readonly listener: GameUpdateListener;
 }
-
 export class InMemoryGameUpdatePublisher implements GameUpdatePublisher {
   private readonly subscriptions = new Set<Subscription>();
 
@@ -31,4 +30,3 @@ export class InMemoryGameUpdatePublisher implements GameUpdatePublisher {
     return () => this.subscriptions.delete(subscription);
   }
 }
-

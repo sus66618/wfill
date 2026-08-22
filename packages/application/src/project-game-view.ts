@@ -22,7 +22,6 @@ const eventVisibleTo = (event: GameEvent, mode: SpectatorMode): boolean => {
     && event.audience.kind === "private"
     && event.audience.seat === mode.seat;
 };
-
 const systemTextFor = (event: GameEvent): string | null => {
   switch (event.type) {
     case "game_created": return "对局已创建。";
@@ -129,4 +128,3 @@ export const projectGameView = ({ state, playerEvents, auditEvents, mode }: Proj
   // 浏览器边界始终由严格协议做最后一次白名单校验。
   return gameViewSchema.parse(view);
 };
-

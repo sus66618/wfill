@@ -9,4 +9,3 @@ export const openSqliteDatabase = (path: string): DatabaseSync => {
   runMigrations(database);
   return database;
 };
-

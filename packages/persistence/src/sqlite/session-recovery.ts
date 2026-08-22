@@ -9,7 +9,6 @@ export interface RecoveredSession {
   readonly playerEvents: readonly GameEvent[];
   readonly auditEvents: readonly GameEvent[];
 }
-
 const parseState = (value: unknown): GameState => {
   const state = JSON.parse(String(value)) as GameState;
   assertGameState(state);
@@ -66,4 +65,3 @@ export class SqliteSessionRecoveryService {
     }
   }
 }
-

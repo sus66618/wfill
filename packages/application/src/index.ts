@@ -5,3 +5,5 @@ export * from "./scripted-player-controller.js";
 export * from "./session-runner.js";
 export * from "./views.js";
 export * from "./model/prompt-builder.js";
+export * from "./model/decision-parser.js";
+export * from "./model/model-player-controller.js";

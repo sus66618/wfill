@@ -32,6 +32,7 @@
 - 9 人、12 人、警长和新角色运行实现。
 - 本地模型、多模态、语音、图片或思维链展示。
 - Steam、桌面封装、云部署、公开匹配、排行榜和付费系统。
+- Cloudflare Workers、Durable Objects、D1 或 Codex Sites 的实际部署与账户配置。
 - Anthropic、Gemini 等非 OpenAI-Compatible 原生协议适配器。
 - 复杂头像、音效、3D、重动画或其他不影响首局可玩的装饰。
 
@@ -280,3 +281,16 @@ Playwright 覆盖模型配置、创建对局、完整对局、三种视角、失
 - 真实恢复使用 god-only 审计日志；公开事件只用于安全展示和公开回放。
 - 视觉采用 A「寂静剧场」，黑色为主、克制紫色强调、固定三栏。
 - 首版坚持本地单用户和全 AI 对局，不提前加入真人或公网系统。
+
+## 15. 部署可移植性
+
+首版只在本地 Node.js、浏览器和 SQLite 上运行，不为 Cloudflare 或 Codex Sites 增加实际部署任务。但模块边界必须保留以下迁移可能：
+
+- HTTP 路由只依赖标准 Request/Response 语义，Fastify 适配位于应用层之外。
+- `GameSessionRunner` 通过会话仓储和事件发布端口工作，不直接持有 SQLite 连接；未来可以映射为“每局一个 Durable Object”的单写者实例。
+- 本地 SQLite 只实现仓储端口；未来 D1 或 Durable Object SQLite 可以提供云端实现。
+- `CredentialVault` 是独立端口；本地使用当前用户凭据库，Cloudflare 可替换为 Worker Secrets/Secrets Store，Sites 可替换为其运行时秘密变量。
+- 实时更新由内部 `GameUpdatePublisher` 抽象产生；本地适配为 SSE，未来可替换为 Durable Object WebSocket 或托管平台支持的推送机制。
+- React 前端只依赖版本化 HTTP/SSE 协议，可作为静态资源部署到 Cloudflare 或 Codex Sites，而不引用本地文件路径或 Node 专有模块。
+
+未来若开始公网部署，应单独设计身份认证、多人访问权限、滥用防护、配额、云端凭据所有权和费用边界；本规格不提前假定这些安全决策。

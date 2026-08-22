@@ -1,0 +1,19 @@
+{
+  "name": "@wfill/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@wfill/application": "workspace:*",
+    "@wfill/contracts": "workspace:*",
+    "@wfill/game-engine": "workspace:*",
+    "@wfill/persistence": "workspace:*",
+    "@wfill/rules-core": "workspace:*",
+    "fastify": "^5.6.0",
+    "zod": "^3.25.76"
+  }
+}

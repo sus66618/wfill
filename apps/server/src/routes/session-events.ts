@@ -1,5 +1,6 @@
 import { GameIdSchema, SeatIdSchema, type SessionUpdate, type SpectatorMode } from "@wfill/contracts";
 import type { FastifyInstance } from "fastify";
+import { once } from "node:events";
 import { z } from "zod";
 import type { SessionRegistry } from "../runtime/session-registry.js";
 
@@ -52,17 +53,17 @@ export const registerSessionEventRoutes = async (
     let sentSequence = lastId;
     let closed = false;
     const pending: SessionUpdate[] = [];
-    const writeUpdate = (update: SessionUpdate): void => {
-      if (closed || update.sequence <= sentSequence) return;
+    const writeUpdate = (update: SessionUpdate): boolean => {
+      if (closed || update.sequence <= sentSequence) return true;
       const writable = reply.raw.write(`id: ${update.sequence}\nevent: ${update.type}\ndata: ${JSON.stringify(update)}\n\n`);
       sentSequence = update.sequence;
-      if (!writable) close();
+      return writable;
     };
     const captured = registry.lastUpdateSequence(params.data.gameId);
     const dispose = registry.subscribe(params.data.gameId, mode, (update) => {
       if (update.sequence > captured) pending.push(update);
       if (pending.length > 100) close();
-      else if (sentSequence >= captured) writeUpdate(update);
+      else if (sentSequence >= captured && !writeUpdate(update)) close();
     });
     const heartbeat = setInterval(() => {
       if (!closed && !reply.raw.write(": heartbeat\n\n")) close();
@@ -79,8 +80,10 @@ export const registerSessionEventRoutes = async (
     request.raw.once("close", close);
 
     for (const update of registry.readUpdatesAfter(params.data.gameId, lastId, mode)) {
-      if (update.sequence <= captured) writeUpdate(update);
+      if (update.sequence <= captured && !writeUpdate(update) && !closed) await once(reply.raw, "drain");
     }
-    for (const update of pending.splice(0)) writeUpdate(update);
+    for (const update of pending.splice(0)) {
+      if (!writeUpdate(update)) close();
+    }
   });
 };

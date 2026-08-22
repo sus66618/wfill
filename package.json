@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @wfill/contracts build && pnpm --filter @wfill/rules-core build && pnpm --filter @wfill/game-engine build && pnpm --filter @wfill/application build && pnpm --filter @wfill/persistence build && pnpm --filter @wfill/server build",
+    "dev:server": "pnpm build && node --watch apps/server/dist/index.js",
+    "start:server": "node apps/server/dist/index.js",
     "test:raw-package-import": "pnpm build && node packages/game-engine/test/raw-package-import.mjs",
     "test": "vitest run",
     "typecheck": "pnpm build && tsc -p packages/contracts/tsconfig.json --noEmit && tsc -p packages/rules-core/tsconfig.json --noEmit && tsc -p packages/game-engine/tsconfig.json --noEmit && tsc -p packages/application/tsconfig.json --noEmit && tsc -p packages/persistence/tsconfig.json --noEmit && tsc -p apps/server/tsconfig.json --noEmit"

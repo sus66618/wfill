@@ -21,4 +21,10 @@ Thumbs.db
 data/local/
 logs/
 *.log
+*.db
+*.db-shm
+*.db-wal
 
+# Codex 与隔离工作树
+.worktrees/
+.superpowers/

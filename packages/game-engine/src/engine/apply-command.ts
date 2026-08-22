@@ -37,7 +37,6 @@ const withCommandRecord = (state: GameState, commandId: CommandId): GameState =>
 });
 
 const rejectionReason = (state: GameState, command: GameCommand): string | undefined => {
-  if (state.processedCommandIds.includes(command.commandId)) return "duplicate_command_id";
   if (state.gameId !== command.gameId) return "game_id_mismatch";
   if (state.version !== command.expectedVersion) return "version_conflict";
 
@@ -99,6 +98,7 @@ const rejected = (state: GameState, command: GameCommand, reason: string): Apply
     type: "action_rejected",
     commandId: command.commandId,
     reason,
+    actorSeat: command.actorSeat,
     audience: { kind: "private", seat: command.actorSeat },
   });
   return {
@@ -231,6 +231,7 @@ const applyWolfCommand = (
     bodies.push({
       type: "wolf_decision",
       targetSeat: wolfTargetSeat,
+      recipientSeat: wolf.seat,
       audience: { kind: "private", seat: wolf.seat },
     });
   }
@@ -298,6 +299,10 @@ const applyWitchCommand = (
 };
 
 export const applyCommand = (state: GameState, command: GameCommand): ApplyCommandResult => {
+  if (state.processedCommandIds.includes(command.commandId)) {
+    return { state, events: [] };
+  }
+
   const reason = rejectionReason(state, command);
   if (reason !== undefined) return rejected(state, command, reason);
 

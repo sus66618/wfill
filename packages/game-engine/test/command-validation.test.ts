@@ -96,12 +96,6 @@ describe("command validation", () => {
 
   it.each([
     {
-      name: "a duplicate command id",
-      state: { ...makeState(), processedCommandIds: ["command-1" as CommandId] },
-      input: command({ type: "inspect_player", actorSeat: seat(5), targetSeat: seat(3) }),
-      reason: "duplicate_command_id",
-    },
-    {
       name: "a stale expected version",
       state: makeState(),
       input: { ...command({ type: "inspect_player", actorSeat: seat(5), targetSeat: seat(3) }), expectedVersion: 9 },
@@ -134,6 +128,18 @@ describe("command validation", () => {
     expect(result.events).toHaveLength(1);
     expect(result.events[0]).toMatchObject({ type: "action_rejected", reason });
     expect(result.state.pendingEffects).toEqual(state.pendingEffects);
+  });
+
+  it("returns the exact current state and no events when replaying a processed command", () => {
+    const input = command({ type: "inspect_player", actorSeat: seat(5), targetSeat: seat(3) });
+    const first = applyCommand(makeState(), input);
+    const replay = applyCommand(first.state, input);
+
+    expect(replay.state).toBe(first.state);
+    expect(replay.state).toEqual(first.state);
+    expect(replay.state.version).toBe(first.state.version);
+    expect(replay.state.processedCommandIds).toEqual(first.state.processedCommandIds);
+    expect(replay.events).toEqual([]);
   });
 
   it("offers only role- and window-appropriate legal actions", () => {

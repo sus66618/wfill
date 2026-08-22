@@ -13,6 +13,24 @@ const PrivateEventAudienceSchema = z.object({
   seat: SeatIdSchema,
 });
 
+const PublicEventAudienceSchema = z.object({
+  kind: z.literal("public"),
+});
+
+const requireMatchingAudienceSeat = (
+  audienceSeat: number,
+  expectedSeat: number,
+  context: z.RefinementCtx,
+): void => {
+  if (audienceSeat !== expectedSeat) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["audience", "seat"],
+      message: "private_event_audience_must_match_seat",
+    });
+  }
+};
+
 const NightActionSchema = z.enum([
   "submit_wolf_kill",
   "inspect_player",
@@ -49,17 +67,30 @@ export const GameEventSchema = z.union([
   EventEnvelopeSchema.extend({ type: z.literal("phase_advanced"), phase: z.string().min(1) }),
   EventEnvelopeSchema.extend({ type: z.literal("speech_published"), seat: SeatIdSchema, content: z.string().min(1) }),
   EventEnvelopeSchema.extend({ type: z.literal("vote_accepted"), actorSeat: SeatIdSchema, targetSeat: SeatIdSchema }),
-  EventEnvelopeSchema.extend({ type: z.literal("action_rejected"), commandId: CommandIdSchema, reason: z.string().min(1) }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("action_rejected"),
+    commandId: CommandIdSchema,
+    reason: z.string().min(1),
+    actorSeat: SeatIdSchema,
+    audience: PrivateEventAudienceSchema,
+  }).superRefine((event, context) => {
+    requireMatchingAudienceSeat(event.audience.seat, event.actorSeat, context);
+  }),
   EventEnvelopeSchema.extend({
     type: z.literal("night_action_recorded"),
     actorSeat: SeatIdSchema,
     action: NightActionSchema,
     audience: PrivateEventAudienceSchema,
+  }).superRefine((event, context) => {
+    requireMatchingAudienceSeat(event.audience.seat, event.actorSeat, context);
   }),
   EventEnvelopeSchema.extend({
     type: z.literal("wolf_decision"),
     targetSeat: SeatIdSchema.nullable(),
+    recipientSeat: SeatIdSchema,
     audience: PrivateEventAudienceSchema,
+  }).superRefine((event, context) => {
+    requireMatchingAudienceSeat(event.audience.seat, event.recipientSeat, context);
   }),
   EventEnvelopeSchema.extend({
     type: z.literal("inspection_result"),
@@ -67,10 +98,13 @@ export const GameEventSchema = z.union([
     targetSeat: SeatIdSchema,
     faction: z.enum(["good", "werewolf"]),
     audience: PrivateEventAudienceSchema,
+  }).superRefine((event, context) => {
+    requireMatchingAudienceSeat(event.audience.seat, event.actorSeat, context);
   }),
   EventEnvelopeSchema.extend({
     type: z.literal("night_resolved"),
     eliminatedSeats: z.array(SeatIdSchema),
+    audience: PublicEventAudienceSchema,
   }),
   EventEnvelopeSchema.extend({ type: z.literal("game_finished"), winner: z.string().min(1) }),
 ]);

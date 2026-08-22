@@ -85,10 +85,13 @@ describe("night resolution", () => {
     expect(events.map((event) => event.type)).toContain("night_resolved");
     expect(events.filter((event) => event.type === "inspection_result"))
       .toEqual([expect.objectContaining({
+        actorSeat: seat(5),
         targetSeat: seat(1),
         faction: "werewolf",
         audience: { kind: "private", seat: seat(5) },
       })]);
+    expect(events.filter((event) => event.type === "night_resolved"))
+      .toEqual([expect.objectContaining({ audience: { kind: "public" } })]);
   });
 
   it("uses one final-confirmation window and turns a second wolf disagreement into an empty kill", () => {
@@ -119,7 +122,16 @@ describe("night resolution", () => {
     expect(secondFinal.state.night.wolfTargetSeat).toBeNull();
     expect(secondFinal.state.pendingEffects).toEqual([]);
     expect(secondFinal.events.filter((event) => event.type === "wolf_decision"))
-      .toHaveLength(2);
+      .toEqual([
+        expect.objectContaining({
+          recipientSeat: seat(1),
+          audience: { kind: "private", seat: seat(1) },
+        }),
+        expect.objectContaining({
+          recipientSeat: seat(2),
+          audience: { kind: "private", seat: seat(2) },
+        }),
+      ]);
     expect(secondFinal.events.every((event) => event.audience.kind === "private")).toBe(true);
   });
 

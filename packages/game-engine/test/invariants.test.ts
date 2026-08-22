@@ -85,6 +85,17 @@ describe("game state invariants", () => {
     })).toThrow("exact_six_seats");
   });
 
+  it("rejects an unsupported six-seat role mix before the engine can deadlock", () => {
+    expect(() => createGame({
+      gameId: "hunter-game",
+      ruleset: {
+        ...SIX_PLAYER_RULESET,
+        roster: ["werewolf", "werewolf", "villager", "villager", "seer", "hunter"],
+      },
+      seed: "hunter-seed",
+    })).toThrow("unsupported_ruleset");
+  });
+
   it.each([
     ["invalid_version", { version: -1 }],
     ["invalid_phase", { phase: "coffee_break" }],

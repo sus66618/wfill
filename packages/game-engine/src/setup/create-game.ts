@@ -3,6 +3,7 @@ import type { RulesetDefinition } from "@wfill/rules-core";
 import type { GameState, PlayerState } from "../state/game-state.js";
 import { assertGameState } from "../engine/assert-invariants.js";
 import { createSeededRandom } from "./seeded-random.js";
+import { validateEngineRuleset } from "./engine-capabilities.js";
 
 export interface CreateGameInput {
   readonly gameId: string;
@@ -31,9 +32,8 @@ const eventIdFor = (gameId: GameId, version: number): EventId =>
   `${gameId}:${version}` as EventId;
 
 export const createGame = ({ gameId, ruleset, seed }: CreateGameInput): CreateGameResult => {
-  if (ruleset.playerCount !== 6 || ruleset.roster.length !== 6) {
-    throw new Error("exact_six_seats");
-  }
+  const capability = validateEngineRuleset(ruleset);
+  if (!capability.supported) throw new Error(capability.reason);
   const typedGameId = gameId as GameId;
   const rolesBySeat = shuffle(ruleset.roster, seed);
   const assignedPlayers = rolesBySeat.map((roleId, index) => ({

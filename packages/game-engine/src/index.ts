@@ -1,4 +1,6 @@
 export { createGame } from "./setup/create-game.js";
+export { validateEngineRuleset } from "./setup/engine-capabilities.js";
+export type { EngineRulesetCapability } from "./setup/engine-capabilities.js";
 export type { CreateGameInput, CreateGameResult } from "./setup/create-game.js";
 export { applyCommand } from "./engine/apply-command.js";
 export type { ApplyCommandResult } from "./engine/apply-command.js";
@@ -17,7 +19,7 @@ export type {
 } from "./engine/death-resolution.js";
 export { evaluateVictory } from "./engine/victory.js";
 export type { VictoryResult } from "./engine/victory.js";
-export { createSpeakingOrder, validateSpeech } from "./engine/speech-policy.js";
+export { createSpeakingOrder, deriveSpeechDirection, validateSpeech } from "./engine/speech-policy.js";
 export type {
   SpeakingOrderInput,
   SpeechDirection,
@@ -41,6 +43,7 @@ export type {
   WolfSubmission,
   WitchResources,
 } from "./state/game-state.js";
+export { replayEvents } from "./engine/replay-events.js";
 export { runScriptedGame } from "./testing/scripted-controller.js";
 export type {
   ScriptedCommand,

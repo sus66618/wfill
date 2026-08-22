@@ -15,6 +15,14 @@ export type SpeechValidationResult =
 
 export type SpeechDirection = "clockwise" | "counterclockwise";
 
+export const deriveSpeechDirection = (
+  seed: string,
+  dayNumber: number,
+  roundContext = "ordinary",
+): SpeechDirection => hashSeed(`${seed}|day:${dayNumber}|round:${roundContext}`) % 2 === 0
+  ? "clockwise"
+  : "counterclockwise";
+
 export interface SpeakingOrderInput {
   readonly seed: string;
   readonly aliveSeats: readonly (SeatId | number)[];

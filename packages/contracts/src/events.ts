@@ -4,6 +4,7 @@ import { CommandIdSchema, EventIdSchema, GameIdSchema, SeatIdSchema } from "./id
 export const EventAudienceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("public") }),
   z.object({ kind: z.literal("private"), seat: SeatIdSchema }),
+  z.object({ kind: z.literal("god") }),
 ]);
 
 export type EventAudience = z.infer<typeof EventAudienceSchema>;
@@ -53,6 +54,11 @@ const EventEnvelopeSchema = z.object({
   gameId: GameIdSchema,
   version: z.number().int().min(0),
   audience: EventAudienceSchema,
+  commandId: CommandIdSchema.optional(),
+  rulesetId: z.string().min(1).optional(),
+  rulesetVersion: z.string().min(1).optional(),
+  dayNumber: z.number().int().min(0).optional(),
+  phase: z.string().min(1).optional(),
 });
 
 const VoteBallotSchema = z.object({
@@ -142,6 +148,7 @@ export const GameEventSchema = z.union([
     type: z.literal("night_action_recorded"),
     actorSeat: SeatIdSchema,
     action: NightActionSchema,
+    targetSeat: SeatIdSchema.optional(),
     audience: PrivateEventAudienceSchema,
   }).superRefine((event, context) => {
     requireMatchingAudienceSeat(event.audience.seat, event.actorSeat, context);
@@ -171,8 +178,19 @@ export const GameEventSchema = z.union([
   EventEnvelopeSchema.extend({
     type: z.literal("player_eliminated"),
     seat: SeatIdSchema,
-    cause: DeathCauseSchema,
     audience: PublicEventAudienceSchema,
+  }).strict(),
+  EventEnvelopeSchema.extend({
+    type: z.literal("elimination_cause_recorded"),
+    seat: SeatIdSchema,
+    cause: DeathCauseSchema,
+    audience: z.object({ kind: z.literal("god") }),
+  }),
+  EventEnvelopeSchema.extend({
+    type: z.literal("state_checkpoint"),
+    commandId: CommandIdSchema,
+    state: z.record(z.string(), z.unknown()),
+    audience: z.object({ kind: z.literal("god") }),
   }),
   EventEnvelopeSchema.extend({
     type: z.literal("game_finished"),
@@ -187,7 +205,8 @@ export const filterEventsForAudience = (
   events: readonly GameEvent[],
   audience: EventAudience,
 ): GameEvent[] => events.filter((event) =>
-  event.audience.kind === "public"
+  audience.kind === "god"
+  || event.audience.kind === "public"
   || (audience.kind === "private"
     && event.audience.kind === "private"
     && event.audience.seat === audience.seat),

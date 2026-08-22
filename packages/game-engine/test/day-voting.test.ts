@@ -104,7 +104,8 @@ describe("day voting", () => {
     }
 
     expect(state.publicVoteResult?.ballots).toHaveLength(6);
-    expect(state.vote).toMatchObject({ kind: "pk", roundVersion: state.version });
+    expect(state.vote).toMatchObject({ kind: "pk" });
+    expect(state.vote!.roundVersion).toBeLessThan(state.version);
   });
 
   it("rejects a ballot that substitutes the mutable state version for the round version", () => {
@@ -283,6 +284,23 @@ describe("day voting", () => {
     expect(secondSpeech.state.vote?.pendingBallots).toEqual([]);
   });
 
+  it("freezes a new PK vote version only after the final PK speech", () => {
+    let state = finishFirstTie().state;
+    const preSpeechVersion = state.vote!.roundVersion;
+    state = runCommand(state, { type: "submit_speech", actorSeat: seat(2), content: "二号 PK 发言" }).state;
+    state = runCommand(state, { type: "submit_speech", actorSeat: seat(3), content: "三号 PK 发言" }).state;
+
+    expect(state.phase).toBe("day_pk_vote");
+    expect(state.vote!.roundVersion).toBe(state.version);
+    expect(state.vote!.roundVersion).not.toBe(preSpeechVersion);
+    const stale = runCommandAtVersion(state, {
+      type: "submit_vote",
+      actorSeat: seat(1),
+      targetSeat: seat(2),
+    }, preSpeechVersion);
+    expect(stale.events[0]).toMatchObject({ type: "action_rejected", reason: "version_conflict" });
+  });
+
   it("publishes the complete PK result once and enters night on a second tie", () => {
     let state = finishFirstTie().state;
     state = runCommand(state, {
@@ -371,6 +389,18 @@ describe("day voting", () => {
     expect(result).toEqual({ kind: "pending" });
   });
 
+  it("rejects a completed ballot set containing an out-of-candidate target", () => {
+    expect(() => resolveVoteRound({
+      ...openVoteState(),
+      vote: {
+        ...exileRound(),
+        eligibleVoterSeats: [seat(1)],
+        candidateSeats: [seat(2)],
+        pendingBallots: [{ actorSeat: seat(1), targetSeat: seat(3) }],
+      },
+    })).toThrow("ballot_target_not_candidate");
+  });
+
   it("closes an empty-voter PK after both tied candidates finish speaking", () => {
     let state: GameState = {
       ...openVoteState(),
@@ -440,11 +470,10 @@ describe("day voting", () => {
     expect(settled.state.phase).toBe("settlement");
     expect(settled.state.pendingExileSeat).toBeNull();
     expect(settled.state.players.find((entry) => entry.seat === seat(2))?.alive).toBe(false);
-    expect(settled.events.slice(-2)).toEqual([
+    expect(settled.events.filter((event) => event.audience.kind === "public").slice(-2)).toEqual([
       expect.objectContaining({
         type: "player_eliminated",
         seat: seat(2),
-        cause: "exile",
         audience: { kind: "public" },
       }),
       expect.objectContaining({

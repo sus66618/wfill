@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSpeakingOrder, validateSpeech } from "../src/index.js";
+import { createSpeakingOrder, deriveSpeechDirection, validateSpeech } from "../src/index.js";
 
 describe("speech policy", () => {
   it("rejects ordinary speech above 220 Chinese characters", () => {
@@ -45,5 +45,13 @@ describe("speech policy", () => {
 
     expect(createSpeakingOrder(input)).toEqual(createSpeakingOrder(input));
     expect(createSpeakingOrder(input)).toHaveLength(6);
+  });
+
+  it("derives both directions reproducibly from seed and day context", () => {
+    const directions = new Set(Array.from({ length: 32 }, (_, index) =>
+      deriveSpeechDirection(`seed-${index}`, 2, "ordinary")));
+
+    expect(directions).toEqual(new Set(["clockwise", "counterclockwise"]));
+    expect(deriveSpeechDirection("fixed-seed", 3)).toBe(deriveSpeechDirection("fixed-seed", 3));
   });
 });

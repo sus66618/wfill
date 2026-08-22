@@ -19,6 +19,9 @@ const keyEventTrace = (events: readonly GameEvent[]): object[] => events.flatMap
     return [{ type: event.type, eliminatedSeats: event.eliminatedSeats }];
   }
   if (event.type === "player_eliminated") {
+    return [{ type: event.type, seat: event.seat }];
+  }
+  if (event.type === "elimination_cause_recorded") {
     return [{ type: event.type, seat: event.seat, cause: event.cause }];
   }
   if (event.type === "exile_opened") {
@@ -54,7 +57,9 @@ describe("scripted full games", () => {
       "inspection_result",
       "night_resolved",
       "player_eliminated",
+      "elimination_cause_recorded",
       "player_eliminated",
+      "elimination_cause_recorded",
       "phase_advanced",
       "phase_advanced",
       "speech_published",
@@ -72,14 +77,18 @@ describe("scripted full games", () => {
       "exile_opened",
       "speech_published",
       "player_eliminated",
+      "elimination_cause_recorded",
       "game_finished",
     ]);
     expect(keyEventTrace(result.events)).toEqual([
       { type: "night_resolved", eliminatedSeats: [2, 3] },
-      { type: "player_eliminated", seat: 2, cause: "poison" },
-      { type: "player_eliminated", seat: 3, cause: "wolf_kill" },
+      { type: "player_eliminated", seat: 2 },
+      { type: "elimination_cause_recorded", seat: 2, cause: "poison" },
+      { type: "player_eliminated", seat: 3 },
+      { type: "elimination_cause_recorded", seat: 3, cause: "wolf_kill" },
       { type: "exile_opened", exiledSeat: 4 },
-      { type: "player_eliminated", seat: 4, cause: "exile" },
+      { type: "player_eliminated", seat: 4 },
+      { type: "elimination_cause_recorded", seat: 4, cause: "exile" },
       { type: "game_finished", winner: "good" },
     ]);
   });
@@ -108,7 +117,9 @@ describe("scripted full games", () => {
       "night_action_recorded",
       "night_resolved",
       "player_eliminated",
+      "elimination_cause_recorded",
       "player_eliminated",
+      "elimination_cause_recorded",
       "phase_advanced",
       "phase_advanced",
       "speech_published",
@@ -126,6 +137,7 @@ describe("scripted full games", () => {
       "exile_opened",
       "speech_published",
       "player_eliminated",
+      "elimination_cause_recorded",
       "phase_advanced",
       "night_action_recorded",
       "night_action_recorded",
@@ -134,16 +146,21 @@ describe("scripted full games", () => {
       "night_action_recorded",
       "night_resolved",
       "player_eliminated",
+      "elimination_cause_recorded",
       "game_finished",
     ]);
     expect(keyEventTrace(result.events)).toEqual([
       { type: "night_resolved", eliminatedSeats: [4, 5] },
-      { type: "player_eliminated", seat: 4, cause: "wolf_kill" },
-      { type: "player_eliminated", seat: 5, cause: "poison" },
+      { type: "player_eliminated", seat: 4 },
+      { type: "elimination_cause_recorded", seat: 4, cause: "wolf_kill" },
+      { type: "player_eliminated", seat: 5 },
+      { type: "elimination_cause_recorded", seat: 5, cause: "poison" },
       { type: "exile_opened", exiledSeat: 3 },
-      { type: "player_eliminated", seat: 3, cause: "exile" },
+      { type: "player_eliminated", seat: 3 },
+      { type: "elimination_cause_recorded", seat: 3, cause: "exile" },
       { type: "night_resolved", eliminatedSeats: [2] },
-      { type: "player_eliminated", seat: 2, cause: "wolf_kill" },
+      { type: "player_eliminated", seat: 2 },
+      { type: "elimination_cause_recorded", seat: 2, cause: "wolf_kill" },
       { type: "game_finished", winner: "werewolf" },
     ]);
   });

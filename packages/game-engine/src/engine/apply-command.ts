@@ -13,7 +13,7 @@ import {
   type Elimination,
 } from "./death-resolution.js";
 import { resolveNight } from "./night-resolution.js";
-import { createSpeakingOrder, validateSpeech } from "./speech-policy.js";
+import { createSpeakingOrder, deriveSpeechDirection, validateSpeech } from "./speech-policy.js";
 import { evaluateVictory } from "./victory.js";
 import { resolveVoteRound } from "./vote-resolution.js";
 import type {
@@ -28,6 +28,8 @@ import type {
 export interface ApplyCommandResult {
   readonly state: GameState;
   readonly events: readonly GameEvent[];
+  /** 仅供持久化/回放的上帝视角审计事件，不进入玩家事件流。 */
+  readonly auditEvents?: readonly GameEvent[];
 }
 
 type EventBody = Record<string, unknown> & { readonly type: GameEvent["type"] };
@@ -35,12 +37,22 @@ type EventBody = Record<string, unknown> & { readonly type: GameEvent["type"] };
 const eventIdFor = (state: GameState, version: number): EventId =>
   `${state.gameId}:${version}` as EventId;
 
-const makeEvent = (state: GameState, offset: number, body: EventBody): GameEvent => {
+const makeEvent = (
+  state: GameState,
+  offset: number,
+  body: EventBody,
+  commandId?: CommandId,
+): GameEvent => {
   const version = state.version + offset;
   return {
     eventId: eventIdFor(state, version),
     gameId: state.gameId,
     version,
+    ...(commandId === undefined ? {} : { commandId }),
+    rulesetId: state.rulesetId,
+    rulesetVersion: state.rulesetVersion,
+    dayNumber: state.dayNumber ?? 0,
+    phase: state.phase,
     ...body,
   } as GameEvent;
 };
@@ -185,7 +197,7 @@ const rejected = (state: GameState, command: GameCommand, reason: string): Apply
     reason,
     actorSeat: command.actorSeat,
     audience: { kind: "private", seat: command.actorSeat },
-  });
+  }, command.commandId);
   return {
     state: {
       ...withCommandRecord(state, command.commandId),
@@ -199,12 +211,47 @@ const aliveRolePlayers = (state: GameState, roleId: string): PlayerState[] =>
   state.players.filter((player) => player.alive && player.roleId === roleId);
 
 const eliminationBodies = (eliminations: readonly Elimination[]): EventBody[] =>
-  eliminations.map((elimination) => ({
-    type: "player_eliminated",
-    seat: elimination.seat,
-    cause: elimination.cause,
-    audience: { kind: "public" },
-  }));
+  eliminations.flatMap((elimination) => ([
+    {
+      type: "player_eliminated",
+      seat: elimination.seat,
+      audience: { kind: "public" },
+    },
+    {
+      type: "elimination_cause_recorded",
+      seat: elimination.seat,
+      cause: elimination.cause,
+      audience: { kind: "god" },
+    },
+  ]));
+
+const ordinaryDaySpeechState = (
+  baseState: GameState,
+  dayNumber: number,
+  priorDeathSeats: readonly SeatId[],
+): GameState => {
+  const eligibleSpeakerSeats = baseState.players
+    .filter((player) => player.alive)
+    .map((player) => player.seat);
+  const seed = baseState.seed ?? String(baseState.gameId);
+  const direction = deriveSpeechDirection(seed, dayNumber, "ordinary");
+  return {
+    ...baseState,
+    phase: "day_speech",
+    dayNumber,
+    lastNightEliminatedSeats: priorDeathSeats,
+    speech: {
+      kind: "ordinary",
+      eligibleSpeakerSeats,
+      speakingOrder: createSpeakingOrder({ seed, aliveSeats: eligibleSpeakerSeats, priorDeathSeats, direction }),
+      submittedSpeakerSeats: [],
+      limit: baseState.speechLimits?.ordinary.maxCharacters ?? 220,
+    },
+    vote: null,
+    publicVoteResult: null,
+    pendingExileSeat: null,
+  };
+};
 
 const completeDeathSettlement = (
   state: GameState,
@@ -246,6 +293,7 @@ const actionRecordedBody = (command: GameCommand): EventBody => ({
   type: "night_action_recorded",
   actorSeat: command.actorSeat,
   action: command.type,
+  ...("targetSeat" in command ? { targetSeat: command.targetSeat } : {}),
   audience: { kind: "private", seat: command.actorSeat },
 });
 
@@ -301,33 +349,8 @@ const resolvePendingNight = (
     });
   const resolution = resolveNight(state);
   const dayNumber = (state.dayNumber ?? 0) + 1;
-  const daySpeechState = (settledState: GameState): GameState => {
-    const eligibleSpeakerSeats = settledState.players
-      .filter((player) => player.alive)
-      .map((player) => player.seat);
-    const speakingOrder = createSpeakingOrder({
-      seed: state.seed ?? String(state.gameId),
-      aliveSeats: eligibleSpeakerSeats,
-      priorDeathSeats: resolution.eliminatedSeats,
-      direction: "clockwise",
-    });
-    return {
-      ...settledState,
-      phase: "day_speech",
-      dayNumber,
-      lastNightEliminatedSeats: resolution.eliminatedSeats,
-      speech: {
-        kind: "ordinary",
-        eligibleSpeakerSeats,
-        speakingOrder,
-        submittedSpeakerSeats: [],
-        limit: state.speechLimits?.ordinary.maxCharacters ?? 220,
-      },
-      vote: null,
-      publicVoteResult: null,
-      pendingExileSeat: null,
-    };
-  };
+  const daySpeechState = (settledState: GameState): GameState =>
+    ordinaryDaySpeechState(settledState, dayNumber, resolution.eliminatedSeats);
   const firstNightLastWords = resolution.eliminations.filter((elimination) =>
     lastWordsEligibility({
       dayNumber: elimination.dayNumber,
@@ -589,7 +612,6 @@ const completeVoteRound = (
   if (resolution.kind === "open_pk") {
     const eligibleVoterSeats = completedVote.eligibleVoterSeats
       .filter((seat) => !resolution.tiedCandidateSeats.includes(seat));
-    const pkRoundVersion = state.version + bodies.length + 1;
     bodies.push({
       type: "pk_round_opened",
       candidateSeats: resolution.tiedCandidateSeats,
@@ -610,7 +632,8 @@ const completeVoteRound = (
         },
         vote: {
           kind: "pk",
-          roundVersion: pkRoundVersion,
+          // PK 投票版本在 PK 发言全部结束时冻结；此处仅是尚未开放的占位值。
+          roundVersion: state.version,
           eligibleVoterSeats,
           candidateSeats: resolution.tiedCandidateSeats,
           pendingBallots: [],
@@ -683,7 +706,14 @@ const applySpeechCommand = (
 
   if (submittedSpeakerSeats.length === speech.eligibleSpeakerSeats.length) {
     if (state.phase === "day_pk_speech") {
-      nextState = { ...nextState, phase: "day_pk_vote", speech: null };
+      nextState = {
+        ...nextState,
+        phase: "day_pk_vote",
+        speech: null,
+        vote: nextState.vote === null || nextState.vote === undefined
+          ? nextState.vote
+          : { ...nextState.vote, roundVersion: state.version + bodies.length },
+      };
       const resolution = resolveVoteRound(nextState);
       if (resolution.kind !== "pending") {
         return completeVoteRound(nextState, resolution, bodies);
@@ -705,26 +735,11 @@ const applySpeechCommand = (
         },
       };
     } else if (state.phase === "dawn_last_words") {
-      const eligibleSpeakerSeats = nextState.players
-        .filter((player) => player.alive)
-        .map((player) => player.seat);
-      nextState = {
-        ...nextState,
-        phase: "day_speech",
-        speech: {
-          kind: "ordinary",
-          eligibleSpeakerSeats,
-          speakingOrder: createSpeakingOrder({
-            seed: state.seed ?? String(state.gameId),
-            aliveSeats: eligibleSpeakerSeats,
-            priorDeathSeats: state.lastNightEliminatedSeats ?? [],
-            direction: "clockwise",
-          }),
-          submittedSpeakerSeats: [],
-          limit: state.speechLimits?.ordinary.maxCharacters ?? 220,
-        },
-        vote: null,
-      };
+      nextState = ordinaryDaySpeechState(
+        nextState,
+        state.dayNumber ?? 1,
+        state.lastNightEliminatedSeats ?? [],
+      );
       bodies.push({
         type: "phase_advanced",
         phase: "day_speech",
@@ -817,13 +832,26 @@ export const applyCommand = (state: GameState, command: GameCommand): ApplyComma
     applied = applyWitchCommand(state, command as Extract<GameCommand, { type: "use_antidote" | "use_poison" | "pass_action" }>);
   }
 
-  const events = applied.bodies.map((body, index) => makeEvent(state, index + 1, body));
+  const domainEvents = applied.bodies.map((body, index) =>
+    makeEvent(state, index + 1, body, command.commandId));
+  const finalVersion = state.version + domainEvents.length;
+  const finalState: GameState = { ...applied.state, version: finalVersion };
+  const checkpoint = {
+    ...makeEvent(state, domainEvents.length, {
+      type: "state_checkpoint",
+      commandId: command.commandId,
+      state: finalState as unknown as Record<string, unknown>,
+      audience: { kind: "god" },
+    }, command.commandId),
+    eventId: `${state.gameId}:${finalVersion}:audit` as EventId,
+    dayNumber: finalState.dayNumber ?? 0,
+    phase: finalState.phase,
+  } as GameEvent;
+  const events = domainEvents;
   const result: ApplyCommandResult = {
-    state: {
-      ...applied.state,
-      version: events.at(-1)?.version ?? state.version,
-    },
+    state: finalState,
     events,
+    auditEvents: [checkpoint],
   };
   assertGameState(result.state, state.version);
   return result;

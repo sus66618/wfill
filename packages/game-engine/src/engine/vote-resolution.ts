@@ -40,6 +40,10 @@ export const resolveVoteRound = (state: GameState): VoteResolution => {
   if (vote === undefined || vote === null || !hasAllEligibleBallots(state)) {
     return { kind: "pending" };
   }
+  if (vote.pendingBallots.some((ballot) =>
+    ballot.targetSeat !== null && !vote.candidateSeats.includes(ballot.targetSeat))) {
+    throw new Error("ballot_target_not_candidate");
+  }
 
   const tally = vote.candidateSeats.map((targetSeat) => ({
     targetSeat,

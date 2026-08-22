@@ -88,6 +88,23 @@ const runCommand = (
 };
 
 describe("death settlement and victory", () => {
+  it("deduplicates same-seat wolf kill and poison with poison cause priority", () => {
+    const result = resolveDeaths(makeState(), [
+      { type: "wolf_kill", targetSeat: seat(3) },
+      { type: "poison", actorSeat: seat(4), targetSeat: seat(3) },
+      { type: "wolf_kill", targetSeat: seat(3) },
+    ]);
+
+    expect(result.eliminations).toEqual([{
+      seat: seat(3),
+      cause: "poison",
+      deathPhase: "night",
+      dayNumber: 2,
+    }]);
+    expect(result.state.players.filter((entry) => !entry.alive).map((entry) => entry.seat))
+      .toEqual([seat(3)]);
+  });
+
   it("grants first-night and daytime last words but not later-night last words", () => {
     expect(lastWordsEligibility({
       dayNumber: 1,
@@ -189,10 +206,9 @@ describe("death settlement and victory", () => {
       speakingOrder: [seat(1)],
       limit: 30,
     });
-    expect(result.events.at(-1)).toMatchObject({
+    expect(result.events.find((event) => event.type === "player_eliminated")).toMatchObject({
       type: "player_eliminated",
       seat: seat(1),
-      cause: "self_destruct",
       audience: { kind: "public" },
     });
 
@@ -264,6 +280,7 @@ describe("death settlement and victory", () => {
     expect(result.state.speech).toBeNull();
     expect(result.events.map((event) => event.type)).toEqual([
       "player_eliminated",
+      "elimination_cause_recorded",
       "game_finished",
     ]);
     expect(result.events.at(-1)).toMatchObject({
@@ -323,9 +340,11 @@ describe("death settlement and victory", () => {
     expect(result.events.map((event) => event.type)).toEqual([
       "speech_published",
       "player_eliminated",
+      "elimination_cause_recorded",
       "game_finished",
     ]);
-    expect(result.events[1]).toMatchObject({ cause: "exile", audience: { kind: "public" } });
+    expect(result.events[1]).toMatchObject({ type: "player_eliminated", audience: { kind: "public" } });
+    expect(result.events[2]).toMatchObject({ type: "elimination_cause_recorded", cause: "exile", audience: { kind: "god" } });
   });
 
   it("accepts day-exile last words from the current eligible dead speaker", () => {
@@ -386,7 +405,6 @@ describe("death settlement and victory", () => {
     expect(killed.events).toContainEqual(expect.objectContaining({
       type: "player_eliminated",
       seat: seat(3),
-      cause: "wolf_kill",
       audience: { kind: "public" },
     }));
 
@@ -433,7 +451,6 @@ describe("death settlement and victory", () => {
       version: 11,
       type: "player_eliminated",
       seat: 3,
-      cause: "poison",
     };
 
     expect(GameEventSchema.safeParse({
@@ -444,5 +461,10 @@ describe("death settlement and victory", () => {
       ...envelope,
       audience: { kind: "public" },
     })).toMatchObject(envelope);
+    expect(GameEventSchema.safeParse({
+      ...envelope,
+      cause: "poison",
+      audience: { kind: "public" },
+    }).success).toBe(false);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "name": "@wfill/game-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --root ../.. --project @wfill/game-engine"
+  },
+  "dependencies": {
+    "@wfill/contracts": "workspace:*",
+    "@wfill/rules-core": "workspace:*"
+  }
+}

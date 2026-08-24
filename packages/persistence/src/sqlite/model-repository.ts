@@ -105,6 +105,34 @@ export class SqliteModelRepository {
     }));
   }
 
+  listModelsForAccount(accountId: string): readonly StoredModel[] {
+    return this.database.prepare(`
+      SELECT model_id, display_name, enabled, health_status, last_checked_at
+      FROM account_models WHERE account_id = ? ORDER BY model_id
+    `).all(accountId).map((row) => storedModelSchema.parse({
+      modelId: String(row.model_id),
+      displayName: String(row.display_name),
+      enabled: Number(row.enabled) === 1,
+      health: String(row.health_status),
+      lastCheckedAt: row.last_checked_at === null ? null : String(row.last_checked_at),
+    }));
+  }
+
+  setModelHealth(
+    accountId: string,
+    modelId: string,
+    health: "healthy" | "unhealthy",
+    lastCheckedAt: string,
+  ): void {
+    const parsedHealth = healthSchema.parse(health);
+    const checkedAt = z.string().datetime().parse(lastCheckedAt);
+    const result = this.database.prepare(`
+      UPDATE account_models SET health_status = ?, last_checked_at = ?
+      WHERE account_id = ? AND model_id = ?
+    `).run(parsedHealth, checkedAt, accountId, modelId);
+    if (Number(result.changes) !== 1) throw new Error("model_config_not_found");
+  }
+
   bindSessionSeats(gameIdInput: GameId, inputs: readonly SessionSeatModelBinding[]): void {
     const gameId = GameIdSchema.parse(gameIdInput);
     const bindings = inputs.map((input) => seatBindingSchema.parse(input));

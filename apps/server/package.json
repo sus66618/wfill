@@ -11,6 +11,7 @@
     "@wfill/application": "workspace:*",
     "@wfill/contracts": "workspace:*",
     "@wfill/game-engine": "workspace:*",
+    "@wfill/model-gateway": "workspace:*",
     "@wfill/persistence": "workspace:*",
     "@wfill/rules-core": "workspace:*",
     "fastify": "^5.6.0",

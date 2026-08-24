@@ -2,7 +2,7 @@
 
 WFill 是一个面向多模型 API 的 AI 狼人杀项目。模型作为玩家参与对局，确定性规则引擎负责身份分配、阶段推进、合法性校验、信息隔离与胜负裁决。
 
-当前已完成 6 人无警长确定性规则引擎，以及本地会话后端：SQLite 持久化与审计恢复、自动/暂停/单步控制、公开/指定座位/上帝视角投影、REST 与 SSE 断线续传。当前玩家仍是固定脚本控制器，尚未调用真实模型，也尚未提供 React UI。
+当前已完成 6 人无警长确定性规则引擎、本地会话后端和 OpenAI-Compatible 模型玩家链路：SQLite 持久化与审计恢复、自动/暂停/单步控制、公开/指定座位/上帝视角投影、REST 与 SSE 断线续传。React UI 是下一阶段。
 
 ## 已确定原则
 
@@ -27,6 +27,16 @@ pnpm build
 
 ## 启动本地后端
 
+在仓库根目录创建 `.env`（已被 Git 忽略），只在注释下方填写真实值：
+
+```dotenv
+# 学校统一网关地址；聊天请求会自动追加 /chat/completions
+WFILL_SCHOOL_API_BASE_URL=http://aigw.dlut.edu.cn/v1
+
+# 在下一行等号右侧填写你的 API Key；禁止提交、截图或发到聊天中
+WFILL_SCHOOL_API_KEY=请在这里填写真实密钥
+```
+
 ```powershell
 pnpm install
 pnpm build
@@ -35,7 +45,28 @@ pnpm start:server
 
 默认监听 `http://127.0.0.1:3210`，健康检查为 `GET /health`，数据写入 `data/local/wfill.sqlite`。可用 `WFILL_HOST`、`WFILL_PORT`、`WFILL_DATA_DIR` 修改非敏感运行设置。
 
-当前演示局只接受两个确定性种子：
+先检查模型目录和健康状态：
+
+```powershell
+curl.exe http://127.0.0.1:3210/api/models
+curl.exe -X POST http://127.0.0.1:3210/api/models/Qwen3.5-9B/check
+```
+
+首版可选文本模型为 `Qwen3.5-9B`、`Qwen3.5-35B-A3B`、`Qwen3.5-122B-A10B`、`DeepSeek-V3.1-W8A8`、`GLM-4.6-W8A8`、`MiniMax-M2.7-bf16`、`Qwen3-235B-A22B`。模型必须先通过健康检查，六个座位可以混用或复用健康模型。
+
+创建模型对局：
+
+```powershell
+$body = @{
+  gameId = "model-1"
+  controller = "models"
+  seats = 1..6 | ForEach-Object { @{ seat = $_; accountId = "school-account"; modelId = "Qwen3.5-9B" } }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3210/api/sessions -ContentType application/json -Body $body
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3210/api/sessions/model-1/control -ContentType application/json -Body '{"type":"resume"}'
+```
+
+固定脚本演示局仍可用于零额度回归：
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:3210/api/sessions -H "Content-Type: application/json" -d '{\"gameId\":\"demo-1\",\"seed\":\"good-win\"}'
@@ -45,7 +76,28 @@ curl.exe http://127.0.0.1:3210/api/sessions/demo-1
 
 控制类型为 `start`、`pause`、`resume`、`step`。事件流地址为 `/api/sessions/:gameId/events?view=public|god|seat:<编号>`，支持标准 `Last-Event-ID` 续传。
 
-停止服务后，如需重置本地演示数据，可删除明确目标目录 `data/local`；该目录只包含本地运行数据，不进入 Git。API Key 仍未接入，当前版本不读取或保存任何密钥。
+停止服务后，如需重置本地演示数据，可删除明确目标目录 `data/local`；该目录只包含本地运行数据，不进入 Git。API Key 只从进程环境读取，不进入 SQLite、事件、提示词、日志或响应。
+
+## 真实网关验收（会消耗额度）
+
+普通 `pnpm test` 永远跳过真实网络测试。先只做一次低成本健康调用：
+
+```powershell
+$env:WFILL_RUN_LIVE_MODEL_TESTS="1"
+pnpm test:live-model
+Remove-Item Env:WFILL_RUN_LIVE_MODEL_TESTS
+```
+
+确认健康后才运行完整对局；默认复用 `Qwen3.5-9B`，可通过 `WFILL_LIVE_MODEL_ID` 更换：
+
+```powershell
+$env:WFILL_RUN_LIVE_MODEL_TESTS="1"
+$env:WFILL_RUN_LIVE_MODEL_GAME="1"
+pnpm test:live-model
+Remove-Item Env:WFILL_RUN_LIVE_MODEL_TESTS, Env:WFILL_RUN_LIVE_MODEL_GAME
+```
+
+完整验收设有 300 次模型调用和 100,000 Token 硬上限。测试不会打印密钥、提示词或模型原始发言。
 
 ## 文档入口
 

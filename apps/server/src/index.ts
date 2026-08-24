@@ -1,6 +1,10 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildServer } from "./app.js";
+
+const environmentFile = resolve(".env");
+// 本地开发时自动加载根目录密钥文件；已有进程环境变量保持更高优先级。
+if (existsSync(environmentFile)) process.loadEnvFile(environmentFile);
 
 const host = process.env.WFILL_HOST ?? "127.0.0.1";
 const port = Number(process.env.WFILL_PORT ?? "3210");

@@ -5,11 +5,14 @@ import {
   type ModelAccount,
   type ModelCallResult,
 } from "@wfill/model-gateway";
+import type { ModelTextGateway } from "@wfill/application";
 import { SqliteModelRepository, type StoredModel } from "@wfill/persistence";
 
 export interface ModelHealthGateway {
   checkModel(account: ModelAccount, modelId: string, signal?: AbortSignal): Promise<ModelCallResult>;
 }
+
+export interface ModelRuntimeGateway extends ModelHealthGateway, ModelTextGateway {}
 
 export interface ModelHealthView {
   readonly id: string;
@@ -23,7 +26,7 @@ export interface ModelHealthView {
 export interface ModelRuntimeOptions {
   readonly repository: SqliteModelRepository;
   readonly credentialVault: CredentialVault;
-  readonly gateway: ModelHealthGateway;
+  readonly gateway: ModelRuntimeGateway;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly now?: () => string;
 }

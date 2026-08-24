@@ -9,20 +9,40 @@ const createSessionSchema = z.object({
   seed: z.enum(["good-win", "wolf-win"]),
 }).strict();
 
+const modelSeatSchema = z.object({
+  seat: z.number().int().min(1).max(6),
+  accountId: z.literal("school-account"),
+  modelId: z.string().min(1),
+}).strict();
+
+const createModelSessionSchema = z.object({
+  gameId: GameIdSchema.optional(),
+  controller: z.literal("models"),
+  seed: z.string().min(1).max(100).optional(),
+  seats: z.array(modelSeatSchema).length(6).refine((items) => new Set(items.map((item) => item.seat)).size === 6),
+}).strict();
+
+const createAnySessionSchema = z.union([createSessionSchema, createModelSessionSchema]);
+
 const paramsSchema = z.object({ gameId: GameIdSchema }).strict();
 
 const errorBody = (code: string) => ({ error: code });
 
 export const registerSessionRoutes = async (app: FastifyInstance, registry: SessionRegistry): Promise<void> => {
   app.post("/api/sessions", async (request, reply) => {
-    const parsed = createSessionSchema.safeParse(request.body);
+    const parsed = createAnySessionSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send(errorBody("invalid_request"));
     const gameId = parsed.data.gameId ?? GameIdSchema.parse(randomUUID());
     try {
-      const view = registry.create(gameId, parsed.data.seed);
+      const view = "controller" in parsed.data
+        ? registry.createWithModels(gameId, parsed.data.seed ?? gameId, parsed.data.seats)
+        : registry.create(gameId, parsed.data.seed);
       return reply.code(201).send({ view, runner: { mode: "idle", inFlight: false } });
     } catch (error) {
       if (error instanceof Error && error.message === "session_already_exists") {
+        return reply.code(409).send(errorBody(error.message));
+      }
+      if (error instanceof Error && error.message === "model_not_playable") {
         return reply.code(409).send(errorBody(error.message));
       }
       throw error;

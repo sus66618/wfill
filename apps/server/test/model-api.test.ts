@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ModelGatewayError, type ModelAccount, type ModelCallResult } from "@wfill/model-gateway";
 import { buildServer, type ServerRuntime } from "../src/app.js";
-import type { ModelHealthGateway } from "../src/runtime/model-runtime.js";
+import type { ModelRuntimeGateway } from "../src/runtime/model-runtime.js";
+import type { ModelCallRequest } from "@wfill/model-gateway";
 
 const runtimes: ServerRuntime[] = [];
 afterEach(async () => Promise.all(runtimes.splice(0).map((runtime) => runtime.close())));
 
-class FakeHealthGateway implements ModelHealthGateway {
+class FakeHealthGateway implements ModelRuntimeGateway {
   readonly calls: string[] = [];
   constructor(private readonly failures: Readonly<Record<string, ModelGatewayError>> = {}) {}
   async checkModel(_account: ModelAccount, modelId: string): Promise<ModelCallResult> {
@@ -17,6 +18,9 @@ class FakeHealthGateway implements ModelHealthGateway {
       callId: `health:${modelId}`, content: "OK", inputTokens: 3, outputTokens: 1,
       latencyMs: 12, finishReason: "stop",
     };
+  }
+  async generate(request: ModelCallRequest): Promise<ModelCallResult> {
+    throw new Error(`unexpected_generate:${request.callId}`);
   }
 }
 
